@@ -22,6 +22,9 @@ El objetivo es mostrar la distribución política del mundo en distintos siglos.
 - **Capa política por siglo** (del siglo XXX a.C. al XXI): deslizador de siglos, botones
   ‹ › y, cuando un siglo tiene varios mapas, botones para cada año (p. ej. 1914, 1938, 1945…).
 - Cada estado tiene su color; los territorios dependientes toman el color de su metrópoli.
+- **Ciudades históricas** (382): solo aparecen las que existían en el año elegido y con el
+  nombre de entonces (Bizancio → Constantinopla → Estambul, Tenochtitlan → Ciudad de México…).
+  El tamaño del punto indica su importancia; las menores aparecen al acercarse.
 - Nombres sobre el globo, que aparecen o desaparecen según el zoom sin solaparse.
 - Al pasar el ratón (o tocar en el móvil) se resalta el estado y se muestra su nombre,
   de quién depende y las coordenadas.
@@ -52,6 +55,7 @@ se descargan de jsDelivr.
 | `js/labels.js`       | Nombres sobre el globo (estados y accidentes), sin solaparse |
 | `js/features.js`     | Accidentes geográficos de Natural Earth                     |
 | `js/detail.js`       | Parche de detalle en alta resolución al acercarse           |
+| `js/cities.js`       | Ciudades históricas: fundación, abandono y nombres por época |
 | `js/history.js`      | Catálogo de años/siglos disponibles y descarga de los mapas |
 | `js/dem.js`          | Elevación de alta resolución (teselas terrarium) y sombreado |
 | `js/imagery.js`      | Fotos satelitales por teselas, reproyectadas al globo       |
@@ -69,6 +73,8 @@ Para añadir o quitar años, edita `SNAPSHOT_YEARS` en `js/history.js`.
 - Fronteras históricas: [historical-basemaps](https://github.com/aourednik/historical-basemaps)
   de André Ourednik (consulta su licencia en el repositorio). Es un trabajo en curso: las fronteras son aproximadas y los
   nombres están en inglés.
+- Ciudades históricas: recopilación propia (fechas de fundación y abandono aproximadas, sobre
+  todo en la Antigüedad). Para añadir o corregir ciudades, edita la lista de `js/cities.js`.
 - Costas: [Natural Earth](https://www.naturalearthdata.com/) vía `world-atlas` (dominio público).
 - Ríos, lagos, regiones físicas, mares y picos: [Natural Earth](https://github.com/nvkelso/natural-earth-vector)
   (dominio público), escala 1:50 millones; nombres en español cuando están disponibles.

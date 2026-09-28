@@ -7,6 +7,7 @@ import { Labels } from './labels.js';
 import { DetailView } from './detail.js';
 import { fetchElevation, shadeElevation } from './dem.js';
 import { currentProvider, fetchImagery } from './imagery.js';
+import { citiesAt } from './cities.js';
 import {
   LAYERS,
   fetchLayer,
@@ -205,6 +206,7 @@ function getSnapshot(year) {
 
 async function showYear(year) {
   const id = ++requestId;
+  labels.setGroup('cities', citiesAt(year), { priority: 2 });
   timeline.setLoading(true);
   try {
     const geojson = await getSnapshot(year);
@@ -452,6 +454,7 @@ document.querySelectorAll('[data-style]').forEach((button) =>
 );
 $('political').addEventListener('change', (e) => setPoliticalEnabled(e.target.checked));
 $('graticule').addEventListener('change', (e) => (globe.graticuleVisible = e.target.checked));
+$('cities').addEventListener('change', (e) => labels.setGroupVisible('cities', e.target.checked));
 $('features').addEventListener('change', (e) => {
   for (const key of FEATURE_GROUPS) labels.setGroupVisible(key, e.target.checked);
 });

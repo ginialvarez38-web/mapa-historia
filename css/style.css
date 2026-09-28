@@ -458,6 +458,48 @@ button:focus-visible,
   color: #3b2412;
 }
 
+/* Ciudades: punto en el lugar exacto y nombre a la derecha. */
+.label.city {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 12px/1 var(--font-body);
+  letter-spacing: 0;
+  text-transform: none;
+  color: #1d1510;
+}
+
+.label.city::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #1d1510;
+  box-shadow: 0 0 0 1.5px rgba(255, 248, 235, 0.95);
+}
+
+.label.city.rank-1 {
+  font-size: 13px;
+}
+
+.label.city.rank-1::before {
+  background: #8b1e1e;
+  border: 2px solid #1d1510;
+}
+
+.label.city.rank-3 {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.label.city.rank-3::before {
+  width: 6px;
+  height: 6px;
+  margin-left: 1px;
+}
+
 /* Botones de zoom */
 .zoom {
   right: var(--gutter);

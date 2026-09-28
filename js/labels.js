@@ -9,6 +9,7 @@ const MAX_PER_GROUP = 400;
 const MIN_FACING = 0.3; // oculta las que están cerca del borde del disco
 const MIN_SIZE_PX = 46; // tamaño aparente mínimo del accidente para rotularlo
 const LIFT = EARTH_RADIUS * 0.01;
+const DOT_OFFSET = 4; // distancia del borde izquierdo al centro del punto de las ciudades
 
 export class Labels {
   #groups = new Map();
@@ -32,7 +33,9 @@ export class Labels {
 
   /**
    * Sustituye las etiquetas de un grupo. Cada entrada es
-   * { text, sub?, lat, lon, size (radianes), className }.
+   * { text, sub?, lat, lon, size (radianes), className, anchor? }.
+   * anchor 'dot': el punto del lugar a la izquierda y el texto a su derecha
+   * (ciudades); por defecto el texto se centra en el lugar.
    */
   setGroup(key, entries, { priority = 0 } = {}) {
     const previous = this.#groups.get(key);
@@ -61,6 +64,7 @@ export class Labels {
           position,
           normal: position.clone().normalize(),
           size: entry.size,
+          dot: entry.anchor === 'dot',
           width: 0,
           height: 0,
           shown: false,
@@ -107,12 +111,15 @@ export class Labels {
           item.width = item.el.offsetWidth;
           item.height = item.el.offsetHeight;
         }
-        const box = [x - item.width / 2 - 4, y - item.height / 2 - 2, x + item.width / 2 + 4, y + item.height / 2 + 2];
+        const left = item.dot ? x - DOT_OFFSET : x - item.width / 2;
+        const box = [left - 4, y - item.height / 2 - 2, left + item.width + 4, y + item.height / 2 + 2];
         show = !placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
         if (show) placed.push(box);
       }
       if (show) {
-        item.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
+        item.el.style.transform = item.dot
+          ? `translate(${(x - DOT_OFFSET).toFixed(1)}px, ${y.toFixed(1)}px) translateY(-50%)`
+          : `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
         item.el.style.opacity = Math.min((facing - MIN_FACING) / 0.2, 1).toFixed(2);
       }
       if (show !== item.shown) {
