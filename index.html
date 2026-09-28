@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Atlas Histórico 3D</title>
+    <meta name="description" content="Globo terráqueo interactivo en 3D: mapa físico del mundo." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Inter:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+          "topojson-client": "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/+esm"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main id="globe" aria-label="Globo terráqueo interactivo"></main>
+
+    <header class="panel title">
+      <h1>Atlas Histórico</h1>
+      <p>Mapa físico del mundo</p>
+    </header>
+
+    <nav class="panel controls" aria-label="Controles del mapa">
+      <div class="segmented" role="group" aria-label="Estilo del mapa">
+        <button type="button" data-style="physical" aria-pressed="true">Físico</button>
+        <button type="button" data-style="satellite" aria-pressed="false">Satélite</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="graticule" checked /> Cuadrícula</label>
+      <label class="toggle"><input type="checkbox" id="rotate" /> Rotación</label>
+      <button type="button" id="reset" class="button">Vista inicial</button>
+    </nav>
+
+    <p class="hint">Arrastra para girar · Rueda o pellizco para acercar · Doble clic para volar</p>
+    <output id="coords" class="panel coords"></output>
+    <div id="toast" class="panel toast" role="status" hidden></div>
+
+    <div id="loader" class="loader" role="status">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="loader-text">Cargando…</p>
+    </div>
+
+    <footer class="credits">
+      Datos: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener">Natural Earth</a> ·
+      <a href="https://visibleearth.nasa.gov/" target="_blank" rel="noopener">NASA Visible Earth</a>
+    </footer>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
