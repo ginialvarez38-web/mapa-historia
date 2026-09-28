@@ -62,10 +62,15 @@ const HAZE_FRAGMENT = /* glsl */ `
 `;
 
 export class Globe {
-  /** Se invoca con {lat, lon} al mover el puntero sobre la Tierra, o null. */
+  /** Se invoca con ({lat, lon} | null, {x, y}) al mover el ratón. */
   onHover = null;
+  /** Se invoca con ({lat, lon} | null, {x, y}) al hacer clic o tocar sin arrastrar. */
+  onSelect = null;
+  /** Se invoca en cada fotograma, tras actualizar la cámara. */
+  onFrame = null;
 
   #flight = null;
+  #politicalEnabled = true;
   #raycaster = new THREE.Raycaster();
   #pointer = new THREE.Vector2();
 
@@ -97,6 +102,7 @@ export class Globe {
 
     this.#createLights();
     this.#createEarth();
+    this.#createPoliticalOverlay();
     this.#createAtmosphere();
     this.#createGraticule();
     this.#createStars();
@@ -165,6 +171,45 @@ export class Globe {
     });
   }
 
+  /** Sustituye la textura de fronteras (lienzo equirectangular transparente). */
+  setPoliticalMap(canvas) {
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    const material = this.political.material;
+    material.map?.dispose();
+    material.map = texture;
+    material.needsUpdate = true;
+    this.political.visible = this.#politicalEnabled;
+  }
+
+  set politicalVisible(visible) {
+    this.#politicalEnabled = visible;
+    this.political.visible = visible && Boolean(this.political.material.map);
+    this.highlightGroup.visible = visible;
+  }
+
+  /** Resalta el contorno de unos polígonos GeoJSON, o lo quita con null. */
+  highlight(polygons) {
+    for (const child of this.highlightGroup.children) child.geometry.dispose();
+    this.highlightGroup.clear();
+    if (!polygons) return;
+    const radius = EARTH_RADIUS * 1.002;
+    const points = [];
+    for (const polygon of polygons) {
+      for (const ring of polygon) {
+        for (let i = 1; i < ring.length; i++) {
+          const [lon0, lat0] = ring[i - 1];
+          const [lon1, lat1] = ring[i];
+          points.push(latLonToVector3(lat0, lon0, radius), latLonToVector3(lat1, lon1, radius));
+        }
+      }
+    }
+    this.highlightGroup.add(
+      new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), this.highlightMaterial),
+    );
+  }
+
   setStyle(name) {
     const material = this.materials[name];
     if (material) this.earth.material = material;
@@ -209,6 +254,24 @@ export class Globe {
     const geometry = new THREE.SphereGeometry(EARTH_RADIUS, 192, 96);
     this.earth = new THREE.Mesh(geometry, this.materials.physical);
     this.scene.add(this.earth);
+  }
+
+  #createPoliticalOverlay() {
+    // Esfera apenas mayor que la Tierra con la textura de fronteras; así la
+    // capa política sirve igual sobre el mapa físico y sobre el satélite.
+    this.political = new THREE.Mesh(
+      new THREE.SphereGeometry(EARTH_RADIUS * 1.0008, 192, 96),
+      new THREE.MeshPhongMaterial({
+        transparent: true,
+        depthWrite: false,
+        specular: 0x111111,
+        shininess: 6,
+      }),
+    );
+    this.political.visible = false;
+    this.highlightGroup = new THREE.Group();
+    this.highlightMaterial = new THREE.LineBasicMaterial({ color: 0xffe3a3, depthWrite: false });
+    this.scene.add(this.political, this.highlightGroup);
   }
 
   #createAtmosphere() {
@@ -299,10 +362,22 @@ export class Globe {
 
   #bindPointer() {
     const canvas = this.renderer.domElement;
+    const screen = (e) => ({ x: e.clientX, y: e.clientY });
+    let down = null;
     canvas.addEventListener('pointermove', (e) => {
-      if (e.pointerType === 'mouse') this.onHover?.(this.pick(e.clientX, e.clientY));
+      if (e.pointerType === 'mouse') this.onHover?.(this.pick(e.clientX, e.clientY), screen(e));
     });
-    canvas.addEventListener('pointerleave', () => this.onHover?.(null));
+    canvas.addEventListener('pointerleave', (e) => this.onHover?.(null, screen(e)));
+    canvas.addEventListener('pointerdown', (e) => {
+      down = screen(e);
+    });
+    canvas.addEventListener('pointerup', (e) => {
+      // Solo cuenta como selección si el puntero apenas se movió (no es un giro).
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6) {
+        this.onSelect?.(this.pick(e.clientX, e.clientY), screen(e));
+      }
+      down = null;
+    });
     canvas.addEventListener('dblclick', (e) => {
       const target = this.pick(e.clientX, e.clientY);
       if (!target) return;
@@ -340,6 +415,7 @@ export class Globe {
     this.controls.zoomSpeed = THREE.MathUtils.clamp(altitude * 0.5, 0.3, 1);
 
     this.controls.update();
+    this.onFrame?.();
     this.renderer.render(this.scene, this.camera);
   }
 }

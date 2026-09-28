@@ -1,6 +1,8 @@
 // Genera la textura equirectangular del mapa físico: océano, relieve
 // sombreado con tintas hipsométricas y líneas de costa.
 
+import { collectPolygons, polygonsToPath } from './geo.js';
+
 const OCEAN = '#9ec3dc';
 const SHELF = [200, 226, 240];
 const COAST = 'rgba(52, 70, 78, 0.6)';
@@ -87,62 +89,6 @@ export function buildReliefCanvas(elevationImage, width) {
   return canvas;
 }
 
-function collectPolygons(geojson, out = []) {
-  if (!geojson) return out;
-  switch (geojson.type) {
-    case 'FeatureCollection':
-      geojson.features.forEach((f) => collectPolygons(f, out));
-      break;
-    case 'Feature':
-      collectPolygons(geojson.geometry, out);
-      break;
-    case 'GeometryCollection':
-      geojson.geometries.forEach((g) => collectPolygons(g, out));
-      break;
-    case 'Polygon':
-      out.push(geojson.coordinates);
-      break;
-    case 'MultiPolygon':
-      out.push(...geojson.coordinates);
-      break;
-  }
-  return out;
-}
-
-/**
- * Construye un Path2D en proyección equirectangular. Si un anillo salta
- * de un lado al otro del antimeridiano (p. ej. la Antártida), se cierra
- * rodeando el polo correspondiente para que el relleno sea correcto.
- */
-export function geoToPath(geojson, width, height) {
-  const path = new Path2D();
-  const px = (lon) => ((lon + 180) / 360) * width;
-  const py = (lat) => ((90 - lat) / 180) * height;
-
-  for (const polygon of collectPolygons(geojson)) {
-    for (const ring of polygon) {
-      ring.forEach(([lon, lat], i) => {
-        if (i === 0) {
-          path.moveTo(px(lon), py(lat));
-          return;
-        }
-        const [prevLon, prevLat] = ring[i - 1];
-        if (Math.abs(lon - prevLon) > 180) {
-          const edgeFrom = prevLon > 0 ? 180 : -180;
-          const pole = prevLat < 0 ? -90 : 90;
-          path.lineTo(px(edgeFrom), py(prevLat));
-          path.lineTo(px(edgeFrom), py(pole));
-          path.lineTo(px(-edgeFrom), py(pole));
-          path.lineTo(px(-edgeFrom), py(lat));
-        }
-        path.lineTo(px(lon), py(lat));
-      });
-      path.closePath();
-    }
-  }
-  return path;
-}
-
 /** Compone la textura final del mapa físico. */
 export function buildPhysicalMap({ land, relief, width }) {
   const height = width / 2;
@@ -155,7 +101,7 @@ export function buildPhysicalMap({ land, relief, width }) {
   ctx.fillStyle = OCEAN;
   ctx.fillRect(0, 0, width, height);
 
-  const coast = geoToPath(land, width, height);
+  const { path: coast } = polygonsToPath(collectPolygons(land), width, height);
 
   // Halo claro alrededor de las costas que sugiere la plataforma continental.
   ctx.lineJoin = 'round';

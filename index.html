@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Atlas Histórico 3D</title>
-    <meta name="description" content="Globo terráqueo interactivo en 3D: mapa físico del mundo." />
+    <meta name="description" content="Globo terráqueo interactivo en 3D con la distribución política del mundo en cada siglo." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -27,7 +27,8 @@
 
     <header class="panel title">
       <h1>Atlas Histórico</h1>
-      <p>Mapa físico del mundo</p>
+      <p>El mundo político a través de los siglos</p>
+      <p class="hint">Arrastra para girar · Rueda o pellizco para acercar · Doble clic para volar</p>
     </header>
 
     <nav class="panel controls" aria-label="Controles del mapa">
@@ -35,24 +36,38 @@
         <button type="button" data-style="physical" aria-pressed="true">Físico</button>
         <button type="button" data-style="satellite" aria-pressed="false">Satélite</button>
       </div>
-      <label class="toggle"><input type="checkbox" id="graticule" checked /> Cuadrícula</label>
+      <label class="toggle"><input type="checkbox" id="political" checked /> Fronteras</label>
+      <label class="toggle"><input type="checkbox" id="graticule" /> Cuadrícula</label>
       <label class="toggle"><input type="checkbox" id="rotate" /> Rotación</label>
       <button type="button" id="reset" class="button">Vista inicial</button>
     </nav>
 
-    <p class="hint">Arrastra para girar · Rueda o pellizco para acercar · Doble clic para volar</p>
-    <output id="coords" class="panel coords"></output>
+    <section id="timeline" class="panel timeline" aria-label="Línea del tiempo">
+      <div class="timeline-head">
+        <button type="button" id="prev" class="step" aria-label="Siglo anterior">‹</button>
+        <div class="era" aria-live="polite">
+          <strong id="century-label">—</strong>
+          <span id="year-label"></span>
+        </div>
+        <button type="button" id="next" class="step" aria-label="Siglo siguiente">›</button>
+      </div>
+      <input type="range" id="century" min="0" max="0" step="1" aria-label="Siglo" />
+      <div class="range-ends" aria-hidden="true"><span id="range-start"></span><span id="range-end"></span></div>
+      <div id="years" class="years" role="group" aria-label="Año del mapa" hidden></div>
+      <p class="credits">
+        Fronteras: <a href="https://github.com/aourednik/historical-basemaps" target="_blank" rel="noopener">historical-basemaps</a> ·
+        Costas: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener">Natural Earth</a> ·
+        Relieve: <a href="https://visibleearth.nasa.gov/" target="_blank" rel="noopener">NASA</a>
+      </p>
+    </section>
+
+    <div id="tooltip" class="panel tooltip" hidden></div>
     <div id="toast" class="panel toast" role="status" hidden></div>
 
     <div id="loader" class="loader" role="status">
       <div class="spinner" aria-hidden="true"></div>
       <p id="loader-text">Cargando…</p>
     </div>
-
-    <footer class="credits">
-      Datos: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener">Natural Earth</a> ·
-      <a href="https://visibleearth.nasa.gov/" target="_blank" rel="noopener">NASA Visible Earth</a>
-    </footer>
 
     <script type="module" src="js/main.js"></script>
   </body>
