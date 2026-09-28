@@ -24,7 +24,8 @@ export class Labels {
     this.root.hidden = !visible;
   }
 
-  setPolities(polities) {
+  /** radiusAt(lat, lon) da la altura de la superficie, para no quedar bajo el relieve. */
+  setPolities(polities, radiusAt = () => EARTH_RADIUS) {
     this.root.replaceChildren();
     this.#items = [...polities]
       .sort((a, b) => b.area - a.area)
@@ -34,9 +35,11 @@ export class Labels {
         el.className = 'label';
         el.textContent = polity.name;
         this.root.append(el);
-        const position = latLonToVector3(polity.anchor.lat, polity.anchor.lon, EARTH_RADIUS * 1.01);
+        const { lat, lon } = polity.anchor;
+        const position = latLonToVector3(lat, lon, radiusAt(lat, lon) + EARTH_RADIUS * 0.01);
         return {
           el,
+          anchor: polity.anchor,
           position,
           normal: position.clone().normalize(),
           // Tamaño angular aproximado de la entidad, en radianes.
@@ -46,6 +49,14 @@ export class Labels {
           shown: true,
         };
       });
+  }
+
+  /** Recoloca las etiquetas cuando cambia la altura del relieve. */
+  relocate(radiusAt) {
+    for (const item of this.#items) {
+      const { lat, lon } = item.anchor;
+      item.position.setLength(radiusAt(lat, lon) + EARTH_RADIUS * 0.01);
+    }
   }
 
   update(camera, width, height) {

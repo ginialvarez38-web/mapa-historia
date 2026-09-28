@@ -5,6 +5,12 @@ export const EARTH_RADIUS = 1;
 const MIN_DISTANCE = 1.15;
 const MAX_DISTANCE = 8;
 
+/** Exageración máxima del relieve, como fracción del radio terrestre. */
+export const MAX_RELIEF = 0.05;
+// Resolución de la malla de la esfera: el relieve 3D necesita muchos vértices.
+const SEGMENTS = matchMedia('(pointer: coarse)').matches ? [384, 192] : [768, 384];
+const ELEVATION_GRID = [1024, 512];
+
 /** Coordenadas geográficas (grados) -> punto en la esfera. */
 export function latLonToVector3(lat, lon, radius = EARTH_RADIUS) {
   const phi = THREE.MathUtils.degToRad(lon + 180);
@@ -68,9 +74,13 @@ export class Globe {
   onSelect = null;
   /** Se invoca en cada fotograma, tras actualizar la cámara. */
   onFrame = null;
+  /** Se invoca cuando cambia la altura del relieve. */
+  onReliefChange = null;
 
   #flight = null;
   #politicalEnabled = true;
+  #highlighted = null;
+  #relief = { texture: null, grid: null, scale: MAX_RELIEF / 2 };
   #raycaster = new THREE.Raycaster();
   #pointer = new THREE.Vector2();
 
@@ -142,14 +152,75 @@ export class Globe {
     };
   }
 
-  setPhysicalMap(canvas) {
+  /** Textura del mapa físico y, opcionalmente, máscara del agua (blanco = mar) para los brillos. */
+  setPhysicalMap(canvas, waterMask = null) {
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
     const material = this.materials.physical;
     material.map = texture;
     material.color.set(0xffffff);
+    if (waterMask) {
+      material.specularMap = new THREE.CanvasTexture(waterMask);
+      material.specular.set(0x506070);
+      material.shininess = 28;
+    }
     material.needsUpdate = true;
+  }
+
+  /**
+   * Usa un mapa de elevación (escala de grises equirectangular) para
+   * levantar la superficie del globo y sombrear el relieve.
+   */
+  setElevation(image) {
+    const texture = new THREE.Texture(image);
+    texture.needsUpdate = true;
+
+    // Copia en memoria para calcular alturas desde JavaScript (líneas, etiquetas).
+    const [w, h] = ELEVATION_GRID;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(image, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const grid = new Float32Array(w * h);
+    for (let i = 0; i < grid.length; i++) grid[i] = data[i * 4] / 255;
+
+    Object.assign(this.#relief, { texture, grid });
+    this.materials.physical.bumpMap = texture;
+    this.materials.physical.bumpScale = 2;
+    this.#applyRelief();
+  }
+
+  get reliefScale() {
+    return this.#relief.scale;
+  }
+
+  /** Altura del relieve (0 = plano, MAX_RELIEF = máximo). */
+  set reliefScale(scale) {
+    this.#relief.scale = scale;
+    this.#applyRelief();
+  }
+
+  /** Distancia al centro de la superficie en (lat, lon), incluido el relieve. */
+  surfaceRadius(lat, lon) {
+    const { grid, scale } = this.#relief;
+    if (!grid || !scale) return EARTH_RADIUS;
+    const [w, h] = ELEVATION_GRID;
+    const x = ((lon + 180) / 360) * w - 0.5;
+    const y = THREE.MathUtils.clamp(((90 - lat) / 180) * h - 0.5, 0, h - 1);
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+    const fx = x - x0;
+    const fy = y - y0;
+    const xa = ((x0 % w) + w) % w;
+    const xb = (xa + 1) % w;
+    const ya = y0 * w;
+    const yb = Math.min(y0 + 1, h - 1) * w;
+    const top = grid[ya + xa] * (1 - fx) + grid[ya + xb] * fx;
+    const bottom = grid[yb + xa] * (1 - fx) + grid[yb + xb] * fx;
+    return EARTH_RADIUS * (1 + scale * (top * (1 - fy) + bottom * fy));
   }
 
   setSatelliteMaps({ color, bump, specular }) {
@@ -163,12 +234,13 @@ export class Globe {
     };
     this.materials.satellite = new THREE.MeshPhongMaterial({
       map: toTexture(color, true),
-      bumpMap: toTexture(bump),
-      bumpScale: 6,
+      bumpMap: this.#relief.texture ?? toTexture(bump),
+      bumpScale: 4,
       specularMap: toTexture(specular),
-      specular: new THREE.Color(0x3a4a5a),
-      shininess: 18,
+      specular: new THREE.Color(0x4a5a6a),
+      shininess: 24,
     });
+    this.#applyRelief();
   }
 
   /** Sustituye la textura de fronteras (lienzo equirectangular transparente). */
@@ -191,17 +263,20 @@ export class Globe {
 
   /** Resalta el contorno de unos polígonos GeoJSON, o lo quita con null. */
   highlight(polygons) {
+    this.#highlighted = polygons;
     for (const child of this.highlightGroup.children) child.geometry.dispose();
     this.highlightGroup.clear();
     if (!polygons) return;
-    const radius = EARTH_RADIUS * 1.002;
+    const lift = EARTH_RADIUS * 0.002;
+    const point = ([lon, lat]) => latLonToVector3(lat, lon, this.surfaceRadius(lat, lon) + lift);
     const points = [];
     for (const polygon of polygons) {
       for (const ring of polygon) {
+        let previous = point(ring[0]);
         for (let i = 1; i < ring.length; i++) {
-          const [lon0, lat0] = ring[i - 1];
-          const [lon1, lat1] = ring[i];
-          points.push(latLonToVector3(lat0, lon0, radius), latLonToVector3(lat1, lon1, radius));
+          const current = point(ring[i]);
+          points.push(previous, current);
+          previous = current;
         }
       }
     }
@@ -236,11 +311,31 @@ export class Globe {
   }
 
   #createLights() {
-    this.scene.add(new THREE.AmbientLight(0xffffff, 2.1));
-    // Luz ligada a la cámara: el hemisferio visible siempre está iluminado.
-    const sun = new THREE.DirectionalLight(0xffffff, 1.3);
-    sun.position.set(-1.2, 1.4, 0.4);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+    // Luz ligada a la cámara, oblicua desde arriba a la izquierda: el
+    // hemisferio visible siempre está iluminado, pero con volumen y sombras
+    // en las laderas.
+    const sun = new THREE.DirectionalLight(0xfff6ea, 2.3);
+    sun.position.set(-2.5, 2.5, 1);
     this.camera.add(sun);
+  }
+
+  #applyRelief() {
+    const { texture, scale } = this.#relief;
+    if (texture) {
+      const materials = [this.materials.physical, this.materials.satellite, this.political.material];
+      for (const material of materials) {
+        if (!material) continue;
+        if (material.displacementMap !== texture) {
+          material.displacementMap = texture;
+          material.needsUpdate = true;
+        }
+        material.displacementScale = scale;
+      }
+    }
+    this.#buildGraticule();
+    this.highlight(this.#highlighted);
+    this.onReliefChange?.();
   }
 
   #createEarth() {
@@ -251,16 +346,17 @@ export class Globe {
         shininess: 6,
       }),
     };
-    const geometry = new THREE.SphereGeometry(EARTH_RADIUS, 192, 96);
-    this.earth = new THREE.Mesh(geometry, this.materials.physical);
+    this.earthGeometry = new THREE.SphereGeometry(EARTH_RADIUS, ...SEGMENTS);
+    this.earth = new THREE.Mesh(this.earthGeometry, this.materials.physical);
     this.scene.add(this.earth);
   }
 
   #createPoliticalOverlay() {
     // Esfera apenas mayor que la Tierra con la textura de fronteras; así la
     // capa política sirve igual sobre el mapa físico y sobre el satélite.
+    // Comparte la malla de la Tierra y el mismo relieve, algo agrandada.
     this.political = new THREE.Mesh(
-      new THREE.SphereGeometry(EARTH_RADIUS * 1.0008, 192, 96),
+      this.earthGeometry,
       new THREE.MeshPhongMaterial({
         transparent: true,
         depthWrite: false,
@@ -268,6 +364,7 @@ export class Globe {
         shininess: 6,
       }),
     );
+    this.political.scale.setScalar(1.0012);
     this.political.visible = false;
     this.highlightGroup = new THREE.Group();
     this.highlightMaterial = new THREE.LineBasicMaterial({ color: 0xffe3a3, depthWrite: false });
@@ -306,23 +403,26 @@ export class Globe {
     this.scene.add(halo, haze);
   }
 
-  #createGraticule() {
-    const radius = EARTH_RADIUS * 1.0015;
+  /** Meridianos y paralelos cada 15°, pegados a la superficie con relieve. */
+  #buildGraticule() {
     const step = 15;
-    const seg = 2;
+    const seg = 1;
+    const lift = EARTH_RADIUS * 0.0025;
+    const at = (lat, lon) => latLonToVector3(lat, lon, this.surfaceRadius(lat, lon) + lift);
     const points = [];
     for (let lon = -180; lon < 180; lon += step) {
-      for (let lat = -90; lat < 90; lat += seg) {
-        points.push(latLonToVector3(lat, lon, radius), latLonToVector3(lat + seg, lon, radius));
-      }
+      for (let lat = -90; lat < 90; lat += seg) points.push(at(lat, lon), at(lat + seg, lon));
     }
     for (let lat = -75; lat <= 75; lat += step) {
-      for (let lon = -180; lon < 180; lon += seg) {
-        points.push(latLonToVector3(lat, lon, radius), latLonToVector3(lat, lon + seg, radius));
-      }
+      for (let lon = -180; lon < 180; lon += seg) points.push(at(lat, lon), at(lat, lon + seg));
     }
+    this.graticule.geometry.dispose();
+    this.graticule.geometry = new THREE.BufferGeometry().setFromPoints(points);
+  }
+
+  #createGraticule() {
     this.graticule = new THREE.LineSegments(
-      new THREE.BufferGeometry().setFromPoints(points),
+      new THREE.BufferGeometry(),
       new THREE.LineBasicMaterial({
         color: 0xffffff,
         transparent: true,
@@ -331,6 +431,7 @@ export class Globe {
       }),
     );
     this.scene.add(this.graticule);
+    this.#buildGraticule();
   }
 
   #createStars() {

@@ -1,5 +1,5 @@
 import { feature } from 'topojson-client';
-import { Globe } from './globe.js';
+import { Globe, MAX_RELIEF } from './globe.js';
 import { DATA, INITIAL_VIEW } from './config.js';
 import { buildPhysicalMap, buildReliefCanvas } from './physicalMap.js';
 import { PoliticalLayer } from './politicalMap.js';
@@ -20,8 +20,12 @@ const SNAPSHOT_CACHE_SIZE = 6;
 const globe = new Globe($('globe'));
 globe.setView(INITIAL_VIEW.lat, INITIAL_VIEW.lon);
 globe.graticuleVisible = $('graticule').checked;
+const reliefInput = $('relief');
+globe.reliefScale = (reliefInput.value / 100) * MAX_RELIEF;
+const surfaceRadius = (lat, lon) => globe.surfaceRadius(lat, lon);
 const labels = new Labels(document.body);
 globe.onFrame = () => labels.update(globe.camera, innerWidth, innerHeight);
+globe.onReliefChange = () => labels.relocate(surfaceRadius);
 
 let elevationImage = null;
 let satellitePromise = null;
@@ -80,12 +84,14 @@ async function initPhysicalMap() {
       }),
     ]);
     elevationImage = elevation;
+    if (elevation) globe.setElevation(elevation);
 
     loaderText.textContent = 'Dibujando el mapa físico…';
     await nextPaint();
     const width = textureWidth();
     const relief = elevation ? buildReliefCanvas(elevation, Math.min(width, 4096)) : null;
-    globe.setPhysicalMap(buildPhysicalMap({ land, relief, width }));
+    const { map, water } = buildPhysicalMap({ land, relief, width });
+    globe.setPhysicalMap(map, water);
 
     loader.classList.add('hidden');
     window.mapReady = true;
@@ -123,7 +129,7 @@ async function showYear(year) {
     if (id !== requestId) return;
     const layer = new PoliticalLayer(geojson, textureWidth());
     globe.setPoliticalMap(layer.draw());
-    labels.setPolities(layer.polities);
+    labels.setPolities(layer.polities, surfaceRadius);
     politicalLayer = layer;
     select(null);
   } catch (err) {
@@ -312,6 +318,9 @@ document.querySelectorAll('[data-style]').forEach((button) =>
 );
 $('political').addEventListener('change', (e) => setPoliticalEnabled(e.target.checked));
 $('graticule').addEventListener('change', (e) => (globe.graticuleVisible = e.target.checked));
+reliefInput.addEventListener('input', () => {
+  globe.reliefScale = (reliefInput.value / 100) * MAX_RELIEF;
+});
 $('rotate').addEventListener('change', (e) => (globe.autoRotate = e.target.checked));
 $('reset').addEventListener('click', () =>
   globe.flyTo(INITIAL_VIEW.lat, INITIAL_VIEW.lon, globe.fitDistance()),
