@@ -389,9 +389,105 @@ button:focus-visible,
   will-change: transform;
 }
 
+/* Tipos de accidente geográfico, con convenciones de atlas. */
+.label small {
+  display: block;
+  margin-top: 1px;
+  font: 500 10px/1 var(--font-body);
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.label.ocean,
+.label.sea,
+.label.water,
+.label.river {
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0.04em;
+  color: #173f66;
+  text-shadow:
+    0 0 3px rgba(225, 240, 250, 0.95),
+    0 0 6px rgba(225, 240, 250, 0.7);
+}
+
+.label.ocean {
+  font-size: 16px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #1c4a78;
+}
+
+.label.river,
+.label.water {
+  font-size: 11px;
+}
+
+.label.relief {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: #5a3a1c;
+}
+
+.label.desert {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: #7a4a10;
+}
+
+.label.region {
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: 0.1em;
+  text-transform: none;
+  color: #3f3a2a;
+}
+
+.label.continent {
+  font-size: 18px;
+  letter-spacing: 0.45em;
+  color: rgba(43, 29, 18, 0.55);
+}
+
+.label.peak {
+  font: 600 11px/1.1 var(--font-body);
+  letter-spacing: 0;
+  text-transform: none;
+  color: #3b2412;
+}
+
+/* Botones de zoom */
+.zoom {
+  right: var(--gutter);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  gap: 4px;
+}
+
+.zoom button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: 500 20px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.zoom button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* Paneles por encima de las etiquetas. */
 .title,
 .controls,
+.zoom,
 .timeline,
 .toast {
   z-index: 2;

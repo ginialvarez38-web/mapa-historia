@@ -8,9 +8,14 @@ El objetivo es mostrar la distribución política del mundo en distintos siglos.
 ## Funciones
 
 - Globo 3D con [Three.js](https://threejs.org/): girar, acercar y doble clic para volar a un punto.
+- **Zoom** suave hacia el cursor (rueda, pellizco, botones + − o teclas + −), hasta unos 50 km
+  de altura. Al acercarse, la zona visible se redibuja en alta resolución (parche de detalle).
 - **Mapa físico** generado en el navegador: costas de Natural Earth, relieve sombreado y
   tintas hipsométricas a partir de un modelo de elevación.
 - **Vista satélite** (NASA Blue Marble) con relieve y brillo del agua.
+- **Relieve 3D** exagerable, océano con degradado de profundidad, ríos y lagos.
+- **Accidentes geográficos** rotulados: océanos, mares, golfos, estrechos, cordilleras,
+  mesetas, desiertos, penínsulas, ríos, lagos y picos con su altitud.
 - Atmósfera, estrellas, cuadrícula de meridianos y paralelos cada 15°.
 - **Capa política por siglo** (del siglo XXX a.C. al XXI): deslizador de siglos, botones
   ‹ › y, cuando un siglo tiene varios mapas, botones para cada año (p. ej. 1914, 1938, 1945…).
@@ -42,7 +47,9 @@ se descargan de jsDelivr.
 | `js/globe.js`        | Escena 3D: Tierra, atmósfera, cámara, controles, animaciones |
 | `js/physicalMap.js`  | Genera la textura del mapa físico en un `<canvas>`          |
 | `js/politicalMap.js` | Capa política: colores, textura de fronteras y detección bajo el cursor |
-| `js/labels.js`       | Nombres de los estados sobre el globo                       |
+| `js/labels.js`       | Nombres sobre el globo (estados y accidentes), sin solaparse |
+| `js/features.js`     | Accidentes geográficos de Natural Earth                     |
+| `js/detail.js`       | Parche de detalle en alta resolución al acercarse           |
 | `js/history.js`      | Catálogo de años/siglos disponibles y descarga de los mapas |
 | `js/geo.js`          | Proyección de GeoJSON a lienzo (incluido el antimeridiano)  |
 | `js/config.js`       | URLs de datos y vista inicial                               |
@@ -59,4 +66,6 @@ Para añadir o quitar años, edita `SNAPSHOT_YEARS` en `js/history.js`.
   de André Ourednik (consulta su licencia en el repositorio). Es un trabajo en curso: las fronteras son aproximadas y los
   nombres están en inglés.
 - Costas: [Natural Earth](https://www.naturalearthdata.com/) vía `world-atlas` (dominio público).
+- Ríos, lagos, regiones físicas, mares y picos: [Natural Earth](https://github.com/nvkelso/natural-earth-vector)
+  (dominio público), escala 1:50 millones; nombres en español cuando están disponibles.
 - Relieve e imagen satelital: [NASA Visible Earth](https://visibleearth.nasa.gov/) vía `three-globe`.

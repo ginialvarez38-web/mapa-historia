@@ -1,7 +1,7 @@
 // Capa política: convierte un GeoJSON histórico en entidades con color,
 // dibuja la textura de fronteras y localiza la entidad bajo un punto.
 
-import { collectPolygons, polygonsToPath, unwrapRing, wrapLon } from './geo.js';
+import { collectPolygons, polygonStats, polygonsToPath } from './geo.js';
 
 const FILL_ALPHA = 0.55;
 const BORDER = 'rgba(46, 32, 24, 0.75)';
@@ -27,40 +27,13 @@ function colorFor(key) {
   return `hsl(${hue.toFixed(1)} ${saturation}% ${lightness}%)`;
 }
 
-/** Área (grados² corregidos por latitud) y centroide de un anillo. */
-function ringStats(ring) {
-  const pts = unwrapRing(ring);
-  let area = 0;
-  let cx = 0;
-  let cy = 0;
-  let meanLat = 0;
-  for (const [, lat] of pts) meanLat += lat;
-  const k = Math.cos((meanLat / pts.length) * (Math.PI / 180));
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const [x0, y0] = pts[j];
-    const [x1, y1] = pts[i];
-    const cross = x0 * y1 - x1 * y0;
-    area += cross;
-    cx += (x0 + x1) * cross;
-    cy += (y0 + y1) * cross;
-  }
-  if (Math.abs(area) < 1e-9) return { area: 0, lon: pts[0][0], lat: pts[0][1] };
-  return { area: Math.abs(area / 2) * k, lon: wrapLon(cx / (3 * area)), lat: cy / (3 * area) };
-}
-
 function describe(feature, index) {
   const p = feature.properties ?? {};
   const name = p.NAME?.trim();
   if (!name || !feature.geometry) return null;
   const polygons = collectPolygons(feature.geometry);
-  let area = 0;
-  let largest = null;
-  for (const polygon of polygons) {
-    const stats = ringStats(polygon[0]);
-    area += stats.area;
-    if (!largest || stats.area > largest.area) largest = stats;
-  }
-  if (!largest) return null;
+  const stats = polygonStats(polygons);
+  if (!stats) return null;
   const other = (value) => (value && value.trim() !== name ? value.trim() : null);
   const subjectOf = other(p.SUBJECTO);
   return {
@@ -69,8 +42,8 @@ function describe(feature, index) {
     subjectOf,
     partOf: other(p.PARTOF),
     polygons,
-    area,
-    anchor: { lat: largest.lat, lon: largest.lon },
+    area: stats.area,
+    anchor: { lat: stats.lat, lon: stats.lon },
     color: colorFor(subjectOf ?? name),
   };
 }
@@ -90,9 +63,15 @@ export class PoliticalLayer {
     const canvas = document.createElement('canvas');
     canvas.width = this.width;
     canvas.height = this.height;
-    const ctx = canvas.getContext('2d');
-    const scale = this.width / 4096;
+    this.drawTo(canvas.getContext('2d'));
+    return canvas;
+  }
 
+  /**
+   * Dibuja en coordenadas de mundo. scale: píxeles de salida por píxel de
+   * mundo; lineScale: multiplica el grosor base de las fronteras.
+   */
+  drawTo(ctx, scale = 1, lineScale = this.width / 4096) {
     ctx.globalAlpha = FILL_ALPHA;
     for (const { path, color } of this.polities) {
       ctx.fillStyle = color;
@@ -101,9 +80,8 @@ export class PoliticalLayer {
     ctx.globalAlpha = 1;
     ctx.lineJoin = 'round';
     ctx.strokeStyle = BORDER;
-    ctx.lineWidth = 1.1 * scale;
+    ctx.lineWidth = (1.1 * lineScale) / scale;
     for (const { path } of this.polities) ctx.stroke(path);
-    return canvas;
   }
 
   /** Entidad bajo unas coordenadas, o null (prefiere la más pequeña). */

@@ -1,7 +1,7 @@
-// Genera la textura equirectangular del mapa físico: océano, relieve
-// sombreado con tintas hipsométricas y líneas de costa.
+// Mapa físico equirectangular: océano, relieve sombreado con tintas
+// hipsométricas, lagos, ríos y líneas de costa.
 
-import { collectPolygons, polygonsToPath } from './geo.js';
+import { collectPolygons, linesToPath, polygonsToPath } from './geo.js';
 
 // Océano: más oscuro en alta mar y más claro sobre la plataforma continental.
 const OCEAN_DEEP = [58, 104, 150];
@@ -10,6 +10,9 @@ const OCEAN_SHELF = [178, 214, 232];
 const OCEAN_GRID = [1024, 512];
 const COAST = 'rgba(52, 70, 78, 0.6)';
 const LAND_FLAT = '#b9c79a';
+const LAKE = '#8ec0de';
+const LAKE_EDGE = 'rgba(52, 90, 120, 0.55)';
+const RIVER = '#4f8fc4';
 
 // Tintas hipsométricas: elevación normalizada (0-1) -> color.
 const HYPSOMETRIC_RAMP = [
@@ -163,46 +166,116 @@ function buildOceanCanvas(polygons) {
 }
 
 /**
- * Compone la textura final del mapa físico. Devuelve también una máscara
- * del agua (blanco = mar) para los brillos especulares.
+ * Mapa físico en proyección equirectangular: océano con profundidad,
+ * relieve, lagos, ríos y costas. Puede generar la textura del mundo entero
+ * o dibujar solo una ventana a más resolución (parche de detalle).
  */
-export function buildPhysicalMap({ land, relief, width }) {
-  const height = width / 2;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  const scale = width / 4096;
-  const polygons = collectPolygons(land);
+export class PhysicalMap {
+  /**
+   * @param land    GeoJSON de tierras emergidas.
+   * @param lakes   Polígonos de lagos (arrays de anillos).
+   * @param rivers  [{ lines, weight }]: ríos con su grosor base en píxeles.
+   * @param relief  Lienzo de relieve coloreado (o null).
+   * @param elevation Imagen de elevación en grises (o null).
+   * @param width   Ancho en píxeles del «mundo» (el alto es la mitad).
+   */
+  constructor({ land, lakes = [], rivers = [], relief = null, elevation = null, width }) {
+    this.width = width;
+    this.height = width / 2;
+    this.relief = relief;
+    this.elevation = elevation;
+    const polygons = collectPolygons(land);
+    this.ocean = buildOceanCanvas(polygons);
+    this.coast = polygonsToPath(polygons, this.width, this.height).path;
+    this.lakes = polygonsToPath(lakes, this.width, this.height).path;
 
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(buildOceanCanvas(polygons), 0, 0, width, height);
-
-  const { path: coast } = polygonsToPath(polygons, width, height);
-
-  ctx.save();
-  ctx.clip(coast, 'evenodd');
-  if (relief) {
-    ctx.drawImage(relief, 0, 0, width, height);
-  } else {
-    ctx.fillStyle = LAND_FLAT;
-    ctx.fillRect(0, 0, width, height);
+    // Un trazo por grosor: muchos menos cambios de estado al dibujar.
+    const byWeight = new Map();
+    for (const { lines, weight } of rivers) {
+      if (!byWeight.has(weight)) byWeight.set(weight, []);
+      byWeight.get(weight).push(...lines);
+    }
+    this.rivers = [...byWeight]
+      .sort(([a], [b]) => a - b)
+      .map(([weight, lines]) => ({ weight, path: linesToPath(lines, this.width, this.height) }));
   }
-  ctx.restore();
 
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = COAST;
-  ctx.lineWidth = 0.9 * scale;
-  ctx.stroke(coast);
+  /**
+   * Dibuja en coordenadas de mundo. scale: píxeles de salida por píxel de
+   * mundo; lineScale: multiplica los grosores base (en píxeles de salida).
+   */
+  draw(ctx, scale = 1, lineScale = this.width / 4096) {
+    const px = (w) => (w * lineScale) / scale;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(this.ocean, 0, 0, this.width, this.height);
 
-  const water = document.createElement('canvas');
-  water.width = 2048;
-  water.height = 1024;
-  const wctx = water.getContext('2d');
-  wctx.fillStyle = '#fff';
-  wctx.fillRect(0, 0, water.width, water.height);
-  wctx.fillStyle = '#000';
-  wctx.fill(polygonsToPath(polygons, water.width, water.height).path, 'evenodd');
+    ctx.save();
+    ctx.clip(this.coast, 'evenodd');
+    if (this.relief) {
+      ctx.drawImage(this.relief, 0, 0, this.width, this.height);
+    } else {
+      ctx.fillStyle = LAND_FLAT;
+      ctx.fillRect(0, 0, this.width, this.height);
+    }
+    ctx.restore();
 
-  return { map: canvas, water };
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.fillStyle = LAKE;
+    ctx.fill(this.lakes, 'evenodd');
+    ctx.strokeStyle = LAKE_EDGE;
+    ctx.lineWidth = px(0.5);
+    ctx.stroke(this.lakes);
+
+    ctx.strokeStyle = RIVER;
+    for (const { weight, path } of this.rivers) {
+      ctx.lineWidth = px(weight);
+      ctx.stroke(path);
+    }
+
+    ctx.strokeStyle = COAST;
+    ctx.lineWidth = px(0.9);
+    ctx.stroke(this.coast);
+  }
+
+  /** Máscara del agua (blanco = mar o lago) para los brillos especulares. */
+  drawWater(ctx) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.fillStyle = '#000';
+    ctx.fill(this.coast, 'evenodd');
+    ctx.fillStyle = '#fff';
+    ctx.fill(this.lakes, 'evenodd');
+  }
+
+  /** Elevación en grises (para el relieve 3D del parche de detalle). */
+  drawElevation(ctx) {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, this.width, this.height);
+    if (this.elevation) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(this.elevation, 0, 0, this.width, this.height);
+    }
+  }
+
+  /** Textura del mundo entero. */
+  texture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.width;
+    canvas.height = this.height;
+    this.draw(canvas.getContext('2d'));
+    return canvas;
+  }
+
+  waterMask(width = 2048) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = width / 2;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(width / this.width, width / this.width);
+    this.drawWater(ctx);
+    return canvas;
+  }
 }

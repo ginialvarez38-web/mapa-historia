@@ -2,8 +2,12 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 export const EARTH_RADIUS = 1;
-const MIN_DISTANCE = 1.15;
+const MIN_DISTANCE = 1.15; // para encuadrar el globo entero
 const MAX_DISTANCE = 8;
+// Altura mínima de la cámara sobre el terreno (~50 km).
+const MIN_ALTITUDE = EARTH_RADIUS * 0.008;
+// Suavizado del zoom: fracción del recorrido restante en cada fotograma.
+const ZOOM_EASING = 0.18;
 
 /** Exageración máxima del relieve, como fracción del radio terrestre. */
 export const MAX_RELIEF = 0.05;
@@ -78,6 +82,8 @@ export class Globe {
   onReliefChange = null;
 
   #flight = null;
+  #zoom = null;
+  #politicalDetail = false;
   #politicalEnabled = true;
   #highlighted = null;
   #relief = { texture: null, grid: null, scale: MAX_RELIEF / 2 };
@@ -102,13 +108,26 @@ export class Globe {
       enableDamping: true,
       dampingFactor: 0.08,
       enablePan: false,
-      minDistance: MIN_DISTANCE,
+      minDistance: EARTH_RADIUS + MIN_ALTITUDE,
       maxDistance: MAX_DISTANCE,
       autoRotateSpeed: 0.4,
     });
     this.controls.addEventListener('start', () => {
       this.#flight = null;
     });
+    // La rueda la gestiona el globo (zoom suave hacia el cursor). Se captura
+    // en el contenedor para que no llegue a OrbitControls; el pellizco
+    // táctil sigue en manos de OrbitControls.
+    container.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+        this.zoomBy(Math.exp(THREE.MathUtils.clamp(delta, -200, 200) * 0.0022), e.clientX, e.clientY);
+      },
+      { capture: true, passive: false },
+    );
 
     this.#createLights();
     this.#createEarth();
@@ -142,8 +161,31 @@ export class Globe {
     this.controls.update();
   }
 
+  /**
+   * Acerca (factor < 1) o aleja (factor > 1) la cámara multiplicando su
+   * altura. Si se da un punto de pantalla, al acercarse ese lugar se
+   * mantiene bajo el cursor.
+   */
+  zoomBy(factor, clientX, clientY) {
+    const current = this.#zoom?.target ?? this.camera.position.length();
+    const min = this.#minDistance();
+    const target = THREE.MathUtils.clamp(
+      EARTH_RADIUS + (current - EARTH_RADIUS) * factor,
+      min,
+      MAX_DISTANCE,
+    );
+    let anchor = null;
+    if (factor < 1 && clientX !== undefined) {
+      const hit = this.pick(clientX, clientY);
+      if (hit) anchor = latLonToVector3(hit.lat, hit.lon, 1);
+    }
+    this.#flight = null;
+    this.#zoom = { target, anchor };
+  }
+
   /** Vuela suavemente hasta situar (lat, lon) en el centro de la vista. */
   flyTo(lat, lon, distance = this.camera.position.length(), duration = 1400) {
+    this.#zoom = null;
     this.#flight = {
       from: this.camera.position.clone(),
       to: latLonToVector3(lat, lon, distance),
@@ -252,13 +294,41 @@ export class Globe {
     material.map?.dispose();
     material.map = texture;
     material.needsUpdate = true;
-    this.political.visible = this.#politicalEnabled;
+    this.#updatePoliticalVisibility();
   }
 
   set politicalVisible(visible) {
     this.#politicalEnabled = visible;
-    this.political.visible = visible && Boolean(this.political.material.map);
+    this.#updatePoliticalVisibility();
     this.highlightGroup.visible = visible;
+  }
+
+  get politicalVisible() {
+    return this.#politicalEnabled;
+  }
+
+  /** Mientras el parche de detalle pinta las fronteras, se oculta la capa global. */
+  set politicalDetailActive(active) {
+    this.#politicalDetail = active;
+    this.#updatePoliticalVisibility();
+  }
+
+  #updatePoliticalVisibility() {
+    this.political.visible =
+      this.#politicalEnabled && !this.#politicalDetail && Boolean(this.political.material.map);
+  }
+
+  get isPhysicalStyle() {
+    return this.earth.material === this.materials.physical;
+  }
+
+  get altitude() {
+    return this.camera.position.length() - EARTH_RADIUS;
+  }
+
+  #minDistance() {
+    const { lat, lon } = vector3ToLatLon(this.camera.position);
+    return this.surfaceRadius(lat, lon) + MIN_ALTITUDE;
   }
 
   /** Resalta el contorno de unos polígonos GeoJSON, o lo quita con null. */
@@ -280,9 +350,9 @@ export class Globe {
         }
       }
     }
-    this.highlightGroup.add(
-      new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), this.highlightMaterial),
-    );
+    const outline = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), this.highlightMaterial);
+    outline.renderOrder = 2; // después del parche de detalle
+    this.highlightGroup.add(outline);
   }
 
   setStyle(name) {
@@ -482,8 +552,9 @@ export class Globe {
     canvas.addEventListener('dblclick', (e) => {
       const target = this.pick(e.clientX, e.clientY);
       if (!target) return;
-      const distance = Math.max(this.camera.position.length() * 0.65, MIN_DISTANCE + 0.25);
-      this.flyTo(target.lat, target.lon, Math.min(distance, this.camera.position.length()));
+      // Centra el punto y reduce la altura a un tercio.
+      const altitude = Math.max(this.altitude / 3, MIN_ALTITUDE * 2);
+      this.flyTo(target.lat, target.lon, this.surfaceRadius(target.lat, target.lon) + altitude);
     });
   }
 
@@ -507,13 +578,44 @@ export class Globe {
     if (t === 1) this.#flight = null;
   }
 
+  #updateZoom() {
+    const { target, anchor } = this.#zoom;
+    const position = this.camera.position;
+    const distance = position.length();
+    let next = THREE.MathUtils.lerp(distance, target, ZOOM_EASING);
+    if (Math.abs(next - target) < (target - EARTH_RADIUS) * 0.002) next = target;
+    const direction = position.clone().normalize();
+    if (anchor) {
+      // Girar hacia el punto del cursor en la misma proporción en que baja la
+      // altura: así ese punto queda aproximadamente quieto en pantalla.
+      const ratio = (next - EARTH_RADIUS) / (distance - EARTH_RADIUS);
+      if (ratio < 1) {
+        const toAnchor = new THREE.Quaternion().setFromUnitVectors(direction, anchor);
+        direction.applyQuaternion(new THREE.Quaternion().slerp(toAnchor, 1 - ratio));
+      }
+    }
+    position.copy(direction.multiplyScalar(next));
+    if (next === target) this.#zoom = null;
+  }
+
   #tick() {
     if (this.#flight) this.#updateFlight();
+    if (this.#zoom) this.#updateZoom();
 
-    // Girar más despacio cuanto más cerca de la superficie.
-    const altitude = this.camera.position.length() - EARTH_RADIUS;
-    this.controls.rotateSpeed = THREE.MathUtils.clamp(altitude * 0.3, 0.04, 0.8);
+    // Que el terreno acompañe al puntero al arrastrar, a cualquier altura:
+    // el giro por píxel es proporcional a la altura de la cámara.
+    const altitude = Math.max(this.altitude, MIN_ALTITUDE);
+    this.controls.rotateSpeed = THREE.MathUtils.clamp(altitude * 0.116, 0.0005, 0.8);
     this.controls.zoomSpeed = THREE.MathUtils.clamp(altitude * 0.5, 0.3, 1);
+    this.controls.minDistance = this.#minDistance();
+
+    // Plano de recorte cercano proporcional a la altura: permite acercarse
+    // mucho sin cortar el terreno ni perder precisión de profundidad.
+    const near = THREE.MathUtils.clamp(altitude * 0.25, 0.0005, 0.05);
+    if (Math.abs(near - this.camera.near) > near * 0.05) {
+      this.camera.near = near;
+      this.camera.updateProjectionMatrix();
+    }
 
     this.controls.update();
     this.onFrame?.();

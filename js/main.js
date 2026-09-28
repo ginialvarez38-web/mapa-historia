@@ -1,9 +1,19 @@
 import { feature } from 'topojson-client';
 import { Globe, MAX_RELIEF } from './globe.js';
 import { DATA, INITIAL_VIEW } from './config.js';
-import { buildPhysicalMap, buildReliefCanvas } from './physicalMap.js';
+import { PhysicalMap, buildReliefCanvas } from './physicalMap.js';
 import { PoliticalLayer } from './politicalMap.js';
 import { Labels } from './labels.js';
+import { DetailView } from './detail.js';
+import {
+  LAYERS,
+  fetchLayer,
+  lakeFeatures,
+  marineLabels,
+  peakLabels,
+  regionLabels,
+  riverFeatures,
+} from './features.js';
 import { CENTURIES, fetchSnapshot, yearLabel } from './history.js';
 
 const $ = (id) => document.getElementById(id);
@@ -22,10 +32,19 @@ globe.setView(INITIAL_VIEW.lat, INITIAL_VIEW.lon);
 globe.graticuleVisible = $('graticule').checked;
 const reliefInput = $('relief');
 globe.reliefScale = (reliefInput.value / 100) * MAX_RELIEF;
-const surfaceRadius = (lat, lon) => globe.surfaceRadius(lat, lon);
 const labels = new Labels(document.body);
-globe.onFrame = () => labels.update(globe.camera, innerWidth, innerHeight);
-globe.onReliefChange = () => labels.relocate(surfaceRadius);
+labels.radiusAt = (lat, lon) => globe.surfaceRadius(lat, lon);
+const detail = new DetailView(globe);
+globe.onFrame = () => {
+  detail.update();
+  labels.update(globe.camera, innerWidth, innerHeight);
+};
+globe.onReliefChange = () => labels.relocate();
+
+// Grupos de nombres de accidentes geográficos (se muestran u ocultan juntos).
+const FEATURE_GROUPS = ['marine', 'regions', 'rivers', 'lakes', 'peaks'];
+// Grosor de las líneas en el parche de detalle, en píxeles del parche.
+const DETAIL_LINE_SCALE = 1.6;
 
 let elevationImage = null;
 let satellitePromise = null;
@@ -75,32 +94,74 @@ function showToast(text) {
 
 async function initPhysicalMap() {
   try {
-    loaderText.textContent = 'Cargando líneas de costa y relieve…';
-    const [land, elevation] = await Promise.all([
-      loadLand(),
-      loadImage(DATA.elevation).catch((err) => {
+    loaderText.textContent = 'Cargando costas, relieve, ríos y lagos…';
+    const optional = (promise) =>
+      promise.catch((err) => {
         console.warn(err);
         return null;
-      }),
+      });
+    const [land, elevation, lakesJson, riversJson] = await Promise.all([
+      loadLand(),
+      optional(loadImage(DATA.elevation)),
+      optional(fetchLayer(LAYERS.lakes)),
+      optional(fetchLayer(LAYERS.rivers)),
     ]);
     elevationImage = elevation;
     if (elevation) globe.setElevation(elevation);
+    const lakes = lakesJson ? lakeFeatures(lakesJson) : { polygons: [], labels: [] };
+    const rivers = riversJson ? riverFeatures(riversJson) : { rivers: [], labels: [] };
 
     loaderText.textContent = 'Dibujando el mapa físico…';
     await nextPaint();
     const width = textureWidth();
     const relief = elevation ? buildReliefCanvas(elevation, Math.min(width, 4096)) : null;
-    const { map, water } = buildPhysicalMap({ land, relief, width });
-    globe.setPhysicalMap(map, water);
+    const physical = new PhysicalMap({
+      land,
+      lakes: lakes.polygons,
+      rivers: rivers.rivers,
+      relief,
+      elevation,
+      width,
+    });
+    globe.setPhysicalMap(physical.texture(), physical.waterMask());
+
+    detail.worldWidth = width;
+    Object.assign(detail.painters, {
+      physical: (ctx, scale) => physical.draw(ctx, scale, DETAIL_LINE_SCALE),
+      water: (ctx) => physical.drawWater(ctx),
+      elevation: (ctx) => physical.drawElevation(ctx),
+    });
+    labels.setGroup('lakes', lakes.labels, { priority: 1 });
+    labels.setGroup('rivers', rivers.labels, { priority: 1 });
 
     loader.classList.add('hidden');
     window.mapReady = true;
     if (!elevation) showToast('No se pudo cargar el relieve; se muestra solo la silueta de los continentes.');
+    loadFeatureLabels();
     return true;
   } catch (err) {
     console.error(err);
     window.reportFatal(err.stack || err.message);
     return false;
+  }
+}
+
+/** Nombres de mares, cordilleras, desiertos, picos…: se cargan sin bloquear. */
+async function loadFeatureLabels() {
+  const layers = [
+    ['marine', LAYERS.marine, marineLabels, 3],
+    ['regions', LAYERS.regions, regionLabels, 1],
+    ['peaks', LAYERS.peaks, peakLabels, 0],
+  ];
+  const results = await Promise.allSettled(
+    layers.map(async ([key, file, build, priority]) => {
+      labels.setGroup(key, build(await fetchLayer(file)), { priority });
+    }),
+  );
+  const failed = results.filter((r) => r.status === 'rejected');
+  if (failed.length) {
+    console.warn(...failed.map((r) => r.reason));
+    showToast('No se pudieron cargar algunos nombres de accidentes geográficos.');
   }
 }
 
@@ -129,7 +190,19 @@ async function showYear(year) {
     if (id !== requestId) return;
     const layer = new PoliticalLayer(geojson, textureWidth());
     globe.setPoliticalMap(layer.draw());
-    labels.setPolities(layer.polities, surfaceRadius);
+    labels.setGroup(
+      'polities',
+      layer.polities.map((p) => ({
+        text: p.name,
+        lat: p.anchor.lat,
+        lon: p.anchor.lon,
+        size: Math.sqrt(p.area) * (Math.PI / 180),
+        className: 'polity',
+      })),
+      { priority: 2 },
+    );
+    detail.painters.political = (ctx, scale) => layer.drawTo(ctx, scale, DETAIL_LINE_SCALE);
+    detail.invalidate();
     politicalLayer = layer;
     select(null);
   } catch (err) {
@@ -144,7 +217,7 @@ async function showYear(year) {
 function setPoliticalEnabled(enabled) {
   politicalEnabled = enabled;
   globe.politicalVisible = enabled;
-  labels.visible = enabled;
+  labels.setGroupVisible('polities', enabled);
   if (!enabled) select(null);
 }
 
@@ -318,6 +391,16 @@ document.querySelectorAll('[data-style]').forEach((button) =>
 );
 $('political').addEventListener('change', (e) => setPoliticalEnabled(e.target.checked));
 $('graticule').addEventListener('change', (e) => (globe.graticuleVisible = e.target.checked));
+$('features').addEventListener('change', (e) => {
+  for (const key of FEATURE_GROUPS) labels.setGroupVisible(key, e.target.checked);
+});
+$('zoom-in').addEventListener('click', () => globe.zoomBy(0.5));
+$('zoom-out').addEventListener('click', () => globe.zoomBy(2));
+addEventListener('keydown', (e) => {
+  if (e.target.closest?.('input, button, textarea, select')) return;
+  if (e.key === '+' || e.key === '=') globe.zoomBy(0.6);
+  else if (e.key === '-' || e.key === '_') globe.zoomBy(1 / 0.6);
+});
 reliefInput.addEventListener('input', () => {
   globe.reliefScale = (reliefInput.value / 100) * MAX_RELIEF;
 });
