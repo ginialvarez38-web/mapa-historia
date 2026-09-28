@@ -25,6 +25,9 @@ El objetivo es mostrar la distribución política del mundo en distintos siglos.
 - **Ciudades históricas** (382): solo aparecen las que existían en el año elegido y con el
   nombre de entonces (Bizancio → Constantinopla → Estambul, Tenochtitlan → Ciudad de México…).
   El tamaño del punto indica su importancia; las menores aparecen al acercarse.
+- **Capitales de cada época** marcadas con una estrella roja (unos 330 periodos: Toledo visigoda,
+  Córdoba califal, Constantinopla bizantina y otomana, Cuzco inca…). Al pasar el ratón se indica
+  de qué estado eran capital.
 - Nombres sobre el globo, que aparecen o desaparecen según el zoom sin solaparse.
 - Al pasar el ratón (o tocar en el móvil) se resalta el estado y se muestra su nombre,
   de quién depende y las coordenadas.
@@ -55,7 +58,7 @@ se descargan de jsDelivr.
 | `js/labels.js`       | Nombres sobre el globo (estados y accidentes), sin solaparse |
 | `js/features.js`     | Accidentes geográficos de Natural Earth                     |
 | `js/detail.js`       | Parche de detalle en alta resolución al acercarse           |
-| `js/cities.js`       | Ciudades históricas: fundación, abandono y nombres por época |
+| `js/cities.js`       | Ciudades históricas: fundación, abandono, nombres y capitalidad por época |
 | `js/history.js`      | Catálogo de años/siglos disponibles y descarga de los mapas |
 | `js/dem.js`          | Elevación de alta resolución (teselas terrarium) y sombreado |
 | `js/imagery.js`      | Fotos satelitales por teselas, reproyectadas al globo       |

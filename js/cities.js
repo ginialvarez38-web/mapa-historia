@@ -6,6 +6,7 @@
 // Formato: [nombres, lat, lon, fundación, abandono | null, rango]
 //   nombres: 'Nombre' o [[desde, 'Nombre'], [desde, 'Otro nombre'], …]
 //   rango:   1 = gran ciudad de su tiempo, 2 = importante, 3 = regional
+// Más abajo, CAPITALS indica de qué estado fue capital cada ciudad y cuándo.
 
 const DEG = Math.PI / 180;
 
@@ -428,8 +429,383 @@ const CITIES = [
   ['Auckland', -36.85, 174.76, 1840, null, 3],
 ];
 
-// Tamaño aparente (radianes) que decide desde qué zoom se rotula cada rango.
-const SIZE_BY_RANK = { 1: 9 * DEG, 2: 4.5 * DEG, 3: 2 * DEG };
+// Capitales: [nombre de la ciudad (cualquiera de sus nombres), desde, hasta | null, estado].
+// Periodos aproximados; se indica la capital principal o sede de gobierno.
+// prettier-ignore
+const CAPITALS = [
+  // Oriente Próximo e Irán
+  ['Ur', -2112, -2004, 'Tercera dinastía de Ur'],
+  ['Babilonia', -1894, -1595, 'Imperio paleobabilónico'],
+  ['Babilonia', -1595, -1155, 'Babilonia casita'],
+  ['Babilonia', -626, -539, 'Imperio neobabilónico'],
+  ['Asur', -2025, -879, 'Asiria'],
+  ['Nimrud', -879, -706, 'Imperio asirio'],
+  ['Nínive', -705, -612, 'Imperio asirio'],
+  ['Hattusa', -1650, -1180, 'Imperio hitita'],
+  ['Susa', -2700, -640, 'Elam'],
+  ['Susa', -522, -330, 'Imperio aqueménida'],
+  ['Persépolis', -518, -330, 'Imperio aqueménida'],
+  ['Seleucia del Tigris', -305, -240, 'Imperio seléucida'],
+  ['Antioquía', -240, -63, 'Imperio seléucida'],
+  ['Ctesifonte', -58, 224, 'Imperio parto'],
+  ['Ctesifonte', 224, 637, 'Imperio sasánida'],
+  ['Medina', 622, 656, 'Califato ortodoxo'],
+  ['Kufa', 656, 661, 'Califato ortodoxo'],
+  ['Damasco', 661, 750, 'Califato omeya'],
+  ['Damasco', 1946, null, 'Siria'],
+  ['Bagdad', 762, 836, 'Califato abasí'],
+  ['Samarra', 836, 892, 'Califato abasí'],
+  ['Bagdad', 892, 1258, 'Califato abasí'],
+  ['Bagdad', 1932, null, 'Irak'],
+  ['Jerusalén', -1000, -586, 'Reino de Israel y Judá'],
+  ['Jerusalén', 1099, 1187, 'Reino de Jerusalén'],
+  ['Petra', -312, 106, 'Reino nabateo'],
+  ['Palmira', 270, 273, 'Imperio de Palmira'],
+  ['Marib', -800, -115, 'Reino de Saba'],
+  ['Isfahán', 1051, 1118, 'Imperio selyúcida'],
+  ['Tabriz', 1501, 1555, 'Imperio safávida'],
+  ['Isfahán', 1598, 1722, 'Imperio safávida'],
+  ['Teherán', 1786, null, 'Persia / Irán'],
+  ['Riad', 1824, 1891, 'Emirato de Nechd'],
+  ['Riad', 1932, null, 'Arabia Saudí'],
+  ['Beirut', 1943, null, 'Líbano'],
+  ['Amán', 1921, null, 'Jordania'],
+
+  // Anatolia, Cáucaso y Grecia
+  ['Sardes', -680, -546, 'Reino de Lidia'],
+  ['Pérgamo', -282, -133, 'Reino de Pérgamo'],
+  ['Constantinopla', 330, 395, 'Imperio romano'],
+  ['Constantinopla', 395, 1204, 'Imperio bizantino'],
+  ['Constantinopla', 1204, 1261, 'Imperio latino'],
+  ['Nicea', 1204, 1261, 'Imperio de Nicea'],
+  ['Constantinopla', 1261, 1453, 'Imperio bizantino'],
+  ['Trebisonda', 1204, 1461, 'Imperio de Trebisonda'],
+  ['Konya', 1097, 1308, 'Sultanato de Rum'],
+  ['Bursa', 1326, 1365, 'Imperio otomano'],
+  ['Edirne', 1365, 1453, 'Imperio otomano'],
+  ['Constantinopla', 1453, 1923, 'Imperio otomano'],
+  ['Ankara', 1923, null, 'Turquía'],
+  ['Tiflis', 1122, 1801, 'Reino de Georgia'],
+  ['Tiflis', 1991, null, 'Georgia'],
+  ['Ereván', 1991, null, 'Armenia'],
+  ['Bakú', 1991, null, 'Azerbaiyán'],
+  ['Cnosos', -1900, -1350, 'Creta minoica'],
+  ['Atenas', -508, -322, 'Atenas (ciudad-estado)'],
+  ['Atenas', 1834, null, 'Grecia'],
+  ['Pela', -400, -168, 'Reino de Macedonia'],
+
+  // Italia y Mediterráneo central
+  ['Roma', -753, -509, 'Reino de Roma'],
+  ['Roma', -509, -27, 'República romana'],
+  ['Roma', -27, 286, 'Imperio romano'],
+  ['Mediolanum', 286, 402, 'Imperio romano de Occidente'],
+  ['Rávena', 402, 476, 'Imperio romano de Occidente'],
+  ['Rávena', 493, 540, 'Reino ostrogodo'],
+  ['Rávena', 584, 751, 'Exarcado de Rávena'],
+  ['Roma', 756, 1870, 'Estados Pontificios'],
+  ['Roma', 1871, null, 'Italia'],
+  ['Venecia', 697, 1797, 'República de Venecia'],
+  ['Génova', 1005, 1797, 'República de Génova'],
+  ['Milán', 1395, 1797, 'Ducado de Milán'],
+  ['Florencia', 1115, 1569, 'República de Florencia'],
+  ['Florencia', 1569, 1859, 'Gran Ducado de Toscana'],
+  ['Turín', 1563, 1861, 'Saboya / Reino de Cerdeña'],
+  ['Turín', 1861, 1865, 'Italia'],
+  ['Florencia', 1865, 1871, 'Italia'],
+  ['Balarm', 831, 1072, 'Emirato de Sicilia'],
+  ['Palermo', 1130, 1282, 'Reino de Sicilia'],
+  ['Nápoles', 1282, 1816, 'Reino de Nápoles'],
+  ['Nápoles', 1816, 1861, 'Reino de las Dos Sicilias'],
+  ['Cartago', -814, -146, 'Cartago'],
+  ['Cartago', 439, 534, 'Reino vándalo'],
+  ['Kairuán', 800, 909, 'Emirato aglabí'],
+  ['Túnez', 1229, 1574, 'Sultanato hafsí'],
+  ['Túnez', 1956, null, 'Túnez'],
+  ['Trípoli', 1951, null, 'Libia'],
+
+  // Península ibérica
+  ['Toledo', 560, 711, 'Reino visigodo'],
+  ['Qurtuba', 756, 929, 'Emirato de Córdoba'],
+  ['Qurtuba', 929, 1031, 'Califato de Córdoba'],
+  ['León', 910, 1230, 'Reino de León'],
+  ['Barcelona', 878, 1137, 'Condado de Barcelona'],
+  ['Zaragoza', 1118, 1479, 'Reino de Aragón'],
+  ['Granada', 1238, 1492, 'Reino nazarí de Granada'],
+  ['Madrid', 1561, null, 'España'],
+  ['Lisboa', 1255, null, 'Portugal'],
+
+  // Europa occidental
+  ['Tolosa', 418, 507, 'Reino visigodo'],
+  ['Tréveris', 293, 395, 'Imperio romano (tetrarquía)'],
+  ['París', 508, 511, 'Reino franco'],
+  ['Aquisgrán', 794, 814, 'Imperio carolingio'],
+  ['París', 987, null, 'Francia'],
+  ['Aviñón', 1309, 1377, 'Papado de Aviñón'],
+  ['Jórvik', 875, 954, 'Reino de Jórvik'],
+  ['Londres', 1066, 1707, 'Inglaterra'],
+  ['Londres', 1707, null, 'Gran Bretaña / Reino Unido'],
+  ['Edimburgo', 1437, 1707, 'Escocia'],
+  ['Dublín', 1922, null, 'Irlanda'],
+  ['Bruselas', 1531, 1794, 'Países Bajos españoles y austriacos'],
+  ['Bruselas', 1830, null, 'Bélgica'],
+  ['Ámsterdam', 1814, null, 'Países Bajos'],
+
+  // Europa central, nórdica y oriental
+  ['Berlín', 1486, 1701, 'Brandeburgo'],
+  ['Berlín', 1701, 1871, 'Prusia'],
+  ['Berlín', 1871, 1945, 'Alemania'],
+  ['Berlín', 1949, 1990, 'Alemania Oriental'],
+  ['Berlín', 1990, null, 'Alemania'],
+  ['Múnich', 1506, 1918, 'Baviera'],
+  ['Viena', 1438, 1804, 'Monarquía de los Habsburgo'],
+  ['Viena', 1804, 1867, 'Imperio austríaco'],
+  ['Viena', 1867, 1918, 'Austria-Hungría'],
+  ['Viena', 1918, 1938, 'Austria'],
+  ['Viena', 1945, null, 'Austria'],
+  ['Praga', 1198, 1918, 'Reino de Bohemia'],
+  ['Praga', 1918, 1993, 'Checoslovaquia'],
+  ['Praga', 1993, null, 'Chequia'],
+  ['Cracovia', 1038, 1596, 'Reino de Polonia'],
+  ['Varsovia', 1596, 1795, 'Polonia-Lituania'],
+  ['Varsovia', 1918, null, 'Polonia'],
+  ['Buda', 1361, 1541, 'Reino de Hungría'],
+  ['Budapest', 1867, null, 'Hungría'],
+  ['Copenhague', 1443, null, 'Dinamarca'],
+  ['Estocolmo', 1523, null, 'Suecia'],
+  ['Oslo', 1299, 1397, 'Noruega'],
+  ['Christiania', 1814, 1925, 'Noruega'],
+  ['Oslo', 1925, null, 'Noruega'],
+  ['Helsinki', 1812, 1917, 'Gran Ducado de Finlandia'],
+  ['Helsinki', 1917, null, 'Finlandia'],
+  ['Riga', 1918, 1940, 'Letonia'],
+  ['Riga', 1991, null, 'Letonia'],
+  ['Tallin', 1918, 1940, 'Estonia'],
+  ['Tallin', 1991, null, 'Estonia'],
+  ['Vilna', 1323, 1795, 'Gran Ducado de Lituania'],
+  ['Vilna', 1991, null, 'Lituania'],
+  ['Kiev', 882, 1240, 'Rus de Kiev'],
+  ['Kiev', 1991, null, 'Ucrania'],
+  ['Nóvgorod', 1136, 1478, 'República de Nóvgorod'],
+  ['Vladímir', 1157, 1331, 'Principado de Vladímir-Súzdal'],
+  ['Moscú', 1263, 1547, 'Principado de Moscú'],
+  ['Moscú', 1547, 1712, 'Zarato ruso'],
+  ['San Petersburgo', 1712, 1918, 'Imperio ruso'],
+  ['Moscú', 1918, 1991, 'Unión Soviética'],
+  ['Moscú', 1991, null, 'Rusia'],
+  ['Kazán', 1438, 1552, 'Kanato de Kazán'],
+  ['Sarai', 1250, 1480, 'Horda de Oro'],
+  ['Itil', 750, 969, 'Jaganato jázaro'],
+  ['Astracán', 1466, 1556, 'Kanato de Astracán'],
+
+  // Balcanes
+  ['Belgrado', 1841, 1918, 'Serbia'],
+  ['Belgrado', 1918, 2006, 'Yugoslavia'],
+  ['Belgrado', 2006, null, 'Serbia'],
+  ['Sofía', 1879, null, 'Bulgaria'],
+  ['Bucarest', 1659, 1862, 'Valaquia'],
+  ['Bucarest', 1862, null, 'Rumanía'],
+  ['Ragusa', 1358, 1808, 'República de Ragusa'],
+  ['Sarajevo', 1992, null, 'Bosnia y Herzegovina'],
+  ['Tirana', 1920, null, 'Albania'],
+
+  // Egipto y África
+  ['Menfis', -3100, -2181, 'Egipto (Imperio Antiguo)'],
+  ['Luxor', -1550, -1346, 'Egipto (Imperio Nuevo)'],
+  ['Amarna', -1346, -1332, 'Egipto (Akenatón)'],
+  ['Luxor', -1332, -1279, 'Egipto (Imperio Nuevo)'],
+  ['Alejandría', -305, -30, 'Egipto ptolemaico'],
+  ['El Cairo', 969, 1171, 'Califato fatimí'],
+  ['El Cairo', 1250, 1517, 'Sultanato mameluco'],
+  ['El Cairo', 1922, null, 'Egipto'],
+  ['Napata', -750, -590, 'Reino de Kush'],
+  ['Meroe', -590, 350, 'Reino de Kush'],
+  ['Aksum', 100, 940, 'Reino de Aksum'],
+  ['Lalibela', 1150, 1270, 'Dinastía zagüe'],
+  ['Gondar', 1636, 1855, 'Imperio etíope'],
+  ['Adís Abeba', 1889, null, 'Etiopía'],
+  ['Jartum', 1956, null, 'Sudán'],
+  ['Fez', 789, 974, 'Estado idrisí'],
+  ['Marrakech', 1070, 1147, 'Imperio almorávide'],
+  ['Marrakech', 1147, 1269, 'Imperio almohade'],
+  ['Fez', 1244, 1465, 'Sultanato benimerín'],
+  ['Marrakech', 1554, 1659, 'Sultanato saadí'],
+  ['Argel', 1516, 1830, 'Regencia de Argel'],
+  ['Argel', 1962, null, 'Argelia'],
+  ['Kumbi Saleh', 700, 1240, 'Imperio de Ghana'],
+  ['Gao', 1464, 1591, 'Imperio songhai'],
+  ['Benín', 1180, 1897, 'Reino de Benín'],
+  ['Lagos', 1960, 1991, 'Nigeria'],
+  ['Dakar', 1902, 1960, 'África Occidental Francesa'],
+  ['Dakar', 1960, null, 'Senegal'],
+  ['Mogadiscio', 1960, null, 'Somalia'],
+  ['Nairobi', 1963, null, 'Kenia'],
+  ['Kilwa', 960, 1513, 'Sultanato de Kilwa'],
+  ['Zanzíbar', 1856, 1964, 'Sultanato de Zanzíbar'],
+  ['Gran Zimbabue', 1100, 1450, 'Reino de Zimbabue'],
+  ['Mbanza Kongo', 1390, 1914, 'Reino del Congo'],
+  ['Leopoldville', 1923, 1960, 'Congo Belga'],
+  ['Leopoldville', 1960, null, 'Congo'],
+  ['Luanda', 1975, null, 'Angola'],
+  ['Ciudad del Cabo', 1652, 1910, 'Colonia del Cabo'],
+  ['Ciudad del Cabo', 1910, null, 'Sudáfrica (sede legislativa)'],
+
+  // Asia central
+  ['Bujará', 892, 999, 'Imperio samánida'],
+  ['Merv', 1118, 1153, 'Imperio selyúcida'],
+  ['Karakórum', 1235, 1260, 'Imperio mongol'],
+  ['Samarcanda', 1370, 1405, 'Imperio timúrida'],
+  ['Herat', 1405, 1507, 'Imperio timúrida'],
+  ['Bujará', 1500, 1920, 'Kanato de Bujará'],
+  ['Jiva', 1511, 1920, 'Kanato de Jiva'],
+  ['Kandahar', 1747, 1776, 'Imperio durrani'],
+  ['Kabul', 1776, null, 'Afganistán'],
+  ['Urga', 1911, null, 'Mongolia'],
+  ['Almá-Atá', 1929, 1997, 'Kazajistán'],
+  ['Taskent', 1991, null, 'Uzbekistán'],
+
+  // Subcontinente indio
+  ['Pataliputra', -490, -322, 'Reino de Magadha'],
+  ['Pataliputra', -322, -185, 'Imperio maurya'],
+  ['Pataliputra', 320, 550, 'Imperio gupta'],
+  ['Anuradhapura', -377, 1017, 'Reino de Anuradhapura'],
+  ['Tanjore', 850, 1279, 'Imperio chola'],
+  ['Polonnaruwa', 1070, 1232, 'Reino de Polonnaruwa'],
+  ['Delhi', 1206, 1526, 'Sultanato de Delhi'],
+  ['Vijayanagara', 1336, 1565, 'Imperio de Vijayanagara'],
+  ['Agra', 1526, 1571, 'Imperio mogol'],
+  ['Fatehpur Sikri', 1571, 1585, 'Imperio mogol'],
+  ['Lahore', 1585, 1598, 'Imperio mogol'],
+  ['Agra', 1598, 1648, 'Imperio mogol'],
+  ['Delhi', 1648, 1857, 'Imperio mogol'],
+  ['Goa', 1530, 1843, 'India portuguesa'],
+  ['Hyderabad', 1724, 1948, 'Estado de Hyderabad'],
+  ['Calcuta', 1772, 1911, 'India británica'],
+  ['Lahore', 1799, 1849, 'Imperio sij'],
+  ['Delhi', 1911, 1947, 'India británica'],
+  ['Delhi', 1947, null, 'India'],
+  ['Colombo', 1948, null, 'Ceilán / Sri Lanka'],
+  ['Daca', 1971, null, 'Bangladés'],
+  ['Katmandú', 1768, null, 'Nepal'],
+  ['Lhasa', 637, 842, 'Imperio tibetano'],
+  ['Lhasa', 1642, 1950, 'Tíbet'],
+
+  // Sudeste asiático
+  ['Palembang', 683, 1025, 'Srivijaya'],
+  ['Pagan', 849, 1297, 'Reino de Pagan'],
+  ['Angkor', 890, 1431, 'Imperio jemer'],
+  ['Majapahit', 1293, 1527, 'Imperio de Majapahit'],
+  ['Ayutthaya', 1351, 1767, 'Reino de Ayutthaya'],
+  ['Malaca', 1400, 1511, 'Sultanato de Malaca'],
+  ['Thăng Long', 1010, 1802, 'Đại Việt'],
+  ['Hue', 1802, 1945, 'Vietnam (dinastía Nguyễn)'],
+  ['Hanói', 1945, null, 'Vietnam'],
+  ['Saigón', 1955, 1975, 'Vietnam del Sur'],
+  ['Bangkok', 1782, null, 'Siam / Tailandia'],
+  ['Nom Pen', 1865, null, 'Camboya'],
+  ['Mandalay', 1857, 1885, 'Reino de Birmania'],
+  ['Rangún', 1948, 2005, 'Birmania'],
+  ['Manila', 1571, 1898, 'Filipinas españolas'],
+  ['Manila', 1946, null, 'Filipinas'],
+  ['Batavia', 1619, 1942, 'Indias Orientales Neerlandesas'],
+  ['Yakarta', 1945, null, 'Indonesia'],
+  ['Singapur', 1965, null, 'Singapur'],
+
+  // China, Corea y Japón
+  ['Yin', -1300, -1046, 'Dinastía Shang'],
+  ['Hao', -1046, -771, 'Zhou occidental'],
+  ['Luoyi', -770, -256, 'Zhou oriental'],
+  ['Xianyang', -350, -221, 'Estado de Qin'],
+  ['Xianyang', -221, -206, 'Dinastía Qin'],
+  ["Chang'an", -202, 9, 'Dinastía Han'],
+  ['Luoyang', 25, 190, 'Han oriental'],
+  ['Chengdu', 221, 263, 'Shu Han'],
+  ['Jianye', 229, 280, 'Wu oriental'],
+  ['Jiankang', 317, 589, 'Dinastías del Sur'],
+  ['Pingcheng', 398, 494, 'Wei del Norte'],
+  ['Luoyang', 494, 534, 'Wei del Norte'],
+  ["Chang'an", 582, 618, 'Dinastía Sui'],
+  ["Chang'an", 618, 904, 'Dinastía Tang'],
+  ['Bianjing', 960, 1127, 'Dinastía Song'],
+  ["Lin'an", 1138, 1276, 'Song del Sur'],
+  ['Zhongdu', 1153, 1215, 'Dinastía Jin'],
+  ['Cambaluc', 1272, 1368, 'Dinastía Yuan'],
+  ['Nankín', 1368, 1421, 'Dinastía Ming'],
+  ['Pekín', 1421, 1644, 'Dinastía Ming'],
+  ['Mukden', 1625, 1644, 'Jin posterior / Qing'],
+  ['Pekín', 1644, 1912, 'Dinastía Qing'],
+  ['Pekín', 1912, 1928, 'República de China'],
+  ['Nankín', 1928, 1949, 'República de China'],
+  ['Pekín', 1949, null, 'República Popular China'],
+  ['Gyeongju', -57, 935, 'Silla'],
+  ['Pionyang', 427, 668, 'Goguryeo'],
+  ['Kaesong', 919, 1394, 'Goryeo'],
+  ['Hanseong', 1394, 1910, 'Joseon'],
+  ['Pionyang', 1948, null, 'Corea del Norte'],
+  ['Seúl', 1948, null, 'Corea del Sur'],
+  ['Nara', 710, 784, 'Japón'],
+  ['Kioto', 794, 1868, 'Japón'],
+  ['Kamakura', 1185, 1333, 'Shogunato Kamakura'],
+  ['Edo', 1603, 1868, 'Shogunato Tokugawa'],
+  ['Tokio', 1868, null, 'Japón'],
+
+  // América
+  ['Monte Albán', -500, 850, 'Estado zapoteca'],
+  ['Tikal', 200, 900, 'Reino maya de Mutul (Tikal)'],
+  ['Calakmul', 400, 900, 'Reino maya de Kaan'],
+  ['Palenque', 400, 800, 'Reino maya de Bʼaakal'],
+  ['Tula', 950, 1150, 'Estado tolteca'],
+  ['Mayapán', 1220, 1441, 'Liga de Mayapán'],
+  ['Tenochtitlan', 1428, 1521, 'Imperio mexica'],
+  ['Ciudad de México', 1535, 1821, 'Virreinato de Nueva España'],
+  ['Ciudad de México', 1821, null, 'México'],
+  ['Ciudad de Guatemala', 1776, 1821, 'Capitanía General de Guatemala'],
+  ['Ciudad de Guatemala', 1839, null, 'Guatemala'],
+  ['Panamá', 1903, null, 'Panamá'],
+  ['Santo Domingo', 1844, null, 'República Dominicana'],
+  ['La Habana', 1607, 1898, 'Cuba española'],
+  ['La Habana', 1902, null, 'Cuba'],
+  ['Kingston', 1872, null, 'Jamaica'],
+  ['Tiahuanaco', 500, 1000, 'Estado de Tiwanaku'],
+  ['Huari', 600, 1000, 'Imperio wari'],
+  ['Chan Chan', 900, 1470, 'Reino chimú'],
+  ['Cuzco', 1438, 1533, 'Imperio inca'],
+  ['Lima', 1543, 1821, 'Virreinato del Perú'],
+  ['Lima', 1821, null, 'Perú'],
+  ['Quito', 1563, 1822, 'Real Audiencia de Quito'],
+  ['Quito', 1830, null, 'Ecuador'],
+  ['Santa Fe de Bogotá', 1739, 1819, 'Virreinato de Nueva Granada'],
+  ['Bogotá', 1819, null, 'Colombia'],
+  ['Caracas', 1777, 1810, 'Capitanía General de Venezuela'],
+  ['Caracas', 1830, null, 'Venezuela'],
+  ['La Paz', 1899, null, 'Bolivia (sede de gobierno)'],
+  ['Asunción', 1811, null, 'Paraguay'],
+  ['Santiago de Chile', 1541, 1818, 'Capitanía General de Chile'],
+  ['Santiago de Chile', 1818, null, 'Chile'],
+  ['Buenos Aires', 1776, 1810, 'Virreinato del Río de la Plata'],
+  ['Buenos Aires', 1810, null, 'Argentina'],
+  ['Montevideo', 1828, null, 'Uruguay'],
+  ['Salvador de Bahía', 1549, 1763, 'Brasil colonial'],
+  ['Río de Janeiro', 1763, 1808, 'Brasil colonial'],
+  ['Río de Janeiro', 1808, 1822, 'Reino de Portugal (corte en Brasil)'],
+  ['Río de Janeiro', 1822, 1960, 'Brasil'],
+  ['Brasilia', 1960, null, 'Brasil'],
+  ['San Agustín', 1565, 1763, 'Florida española'],
+  ['Jamestown', 1607, 1699, 'Colonia de Virginia'],
+  ['Quebec', 1608, 1763, 'Nueva Francia'],
+  ['Nueva Ámsterdam', 1625, 1664, 'Nuevos Países Bajos'],
+  ['Nueva Orleans', 1722, 1803, 'Luisiana'],
+  ['Nueva York', 1785, 1790, 'Estados Unidos'],
+  ['Filadelfia', 1790, 1800, 'Estados Unidos'],
+  ['Washington', 1800, null, 'Estados Unidos'],
+  ['Montreal', 1844, 1849, 'Provincia de Canadá'],
+
+  // Oceanía
+  ['Nan Madol', 1180, 1628, 'Dinastía saudeleur'],
+  ['Honolulu', 1845, 1893, 'Reino de Hawái'],
+  ['Sídney', 1788, 1901, 'Nueva Gales del Sur'],
+  ['Melbourne', 1901, 1927, 'Australia'],
+  ['Auckland', 1841, 1865, 'Nueva Zelanda'],
+];
 
 function nameAt(names, year) {
   if (typeof names === 'string') return names;
@@ -438,18 +814,60 @@ function nameAt(names, year) {
   return current;
 }
 
-/** Ciudades que existían en un año, con el nombre que tenían entonces. */
+const allNames = (names) => (typeof names === 'string' ? [names] : names.map(([, name]) => name));
+
+// Índice: posición de cada ciudad en CITIES -> periodos como capital.
+const CAPITAL_PERIODS = new Map();
+export const UNKNOWN_CAPITALS = [];
+for (const [key, from, to, state] of CAPITALS) {
+  // Se prefiere la ciudad que llevaba ese nombre al empezar el periodo (así
+  // «Filadelfia» en 1790 es la de Estados Unidos y no la antigua Amán).
+  let index = CITIES.findIndex(([names]) => nameAt(names, from) === key);
+  if (index < 0) index = CITIES.findIndex(([names]) => allNames(names).includes(key));
+  if (index < 0) {
+    UNKNOWN_CAPITALS.push(key);
+    continue;
+  }
+  if (!CAPITAL_PERIODS.has(index)) CAPITAL_PERIODS.set(index, []);
+  CAPITAL_PERIODS.get(index).push({ from, to, state });
+}
+
+// Tamaño aparente (radianes) que decide desde qué zoom se rotula cada rango.
+const SIZE_BY_RANK = { 1: 9 * DEG, 2: 4.5 * DEG, 3: 2 * DEG };
+
+
+// Las capitales se rotulan desde más lejos que su rango normal.
+const CAPITAL_SIZE = 7 * DEG;
+
+/** Estados de los que la ciudad era capital en ese año. */
+function capitalOf(index, year) {
+  return (CAPITAL_PERIODS.get(index) ?? [])
+    .filter(({ from, to }) => from <= year && (to === null || year < to))
+    .map(({ state }) => state);
+}
+
+/**
+ * Ciudades que existían en un año, con el nombre que tenían entonces. Las
+ * capitales llevan una estrella y el estado del que eran capital.
+ */
 export function citiesAt(year) {
-  return CITIES.filter(([, , , founded, abandoned]) => founded <= year && (abandoned === null || year < abandoned)).map(
-    ([names, lat, lon, , , rank]) => ({
+  const out = [];
+  CITIES.forEach(([names, lat, lon, founded, abandoned, rank], index) => {
+    if (founded > year || (abandoned !== null && year >= abandoned)) return;
+    const states = capitalOf(index, year);
+    const capital = states.length > 0;
+    out.push({
       text: nameAt(names, year),
+      title: capital ? `Capital de ${states.join(' y de ')}` : null,
       lat,
       lon,
-      size: SIZE_BY_RANK[rank],
-      className: `city rank-${rank}`,
+      size: capital ? Math.max(SIZE_BY_RANK[rank], CAPITAL_SIZE) : SIZE_BY_RANK[rank],
+      className: `city rank-${rank}${capital ? ' capital' : ''}`,
       anchor: 'dot',
-    }),
-  );
+      dotOffset: capital ? 7 : 4,
+    });
+  });
+  return out;
 }
 
 export const CITY_COUNT = CITIES.length;

@@ -48,6 +48,7 @@ export class Labels {
         const el = document.createElement('span');
         el.className = `label ${entry.className ?? ''}`;
         el.textContent = entry.text;
+        if (entry.title) el.title = entry.title;
         if (entry.sub) {
           const sub = document.createElement('small');
           sub.textContent = entry.sub;
@@ -65,6 +66,7 @@ export class Labels {
           normal: position.clone().normalize(),
           size: entry.size,
           dot: entry.anchor === 'dot',
+          dotOffset: entry.dotOffset ?? DOT_OFFSET,
           width: 0,
           height: 0,
           shown: false,
@@ -111,14 +113,14 @@ export class Labels {
           item.width = item.el.offsetWidth;
           item.height = item.el.offsetHeight;
         }
-        const left = item.dot ? x - DOT_OFFSET : x - item.width / 2;
+        const left = item.dot ? x - item.dotOffset : x - item.width / 2;
         const box = [left - 4, y - item.height / 2 - 2, left + item.width + 4, y + item.height / 2 + 2];
         show = !placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
         if (show) placed.push(box);
       }
       if (show) {
         item.el.style.transform = item.dot
-          ? `translate(${(x - DOT_OFFSET).toFixed(1)}px, ${y.toFixed(1)}px) translateY(-50%)`
+          ? `translate(${(x - item.dotOffset).toFixed(1)}px, ${y.toFixed(1)}px) translateY(-50%)`
           : `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
         item.el.style.opacity = Math.min((facing - MIN_FACING) / 0.2, 1).toFixed(2);
       }
