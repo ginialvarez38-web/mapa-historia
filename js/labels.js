@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { EARTH_RADIUS, latLonToVector3 } from './globe.js';
 
-const MAX_PER_GROUP = 400;
+const MAX_PER_GROUP = 700;
 const MIN_FACING = 0.3; // oculta las que están cerca del borde del disco
 const MIN_SIZE_PX = 46; // tamaño aparente mínimo del accidente para rotularlo
 const LIFT = EARTH_RADIUS * 0.01;

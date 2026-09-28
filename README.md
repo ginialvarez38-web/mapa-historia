@@ -22,10 +22,10 @@ El objetivo es mostrar la distribución política del mundo en distintos siglos.
 - **Capa política por siglo** (del siglo XXX a.C. al XXI): deslizador de siglos, botones
   ‹ › y, cuando un siglo tiene varios mapas, botones para cada año (p. ej. 1914, 1938, 1945…).
 - Cada estado tiene su color; los territorios dependientes toman el color de su metrópoli.
-- **Ciudades históricas** (382): solo aparecen las que existían en el año elegido y con el
+- **Ciudades históricas** (540): solo aparecen las que existían en el año elegido y con el
   nombre de entonces (Bizancio → Constantinopla → Estambul, Tenochtitlan → Ciudad de México…).
   El tamaño del punto indica su importancia; las menores aparecen al acercarse.
-- **Capitales de cada época** marcadas con una estrella roja (231 periodos: Toledo visigoda,
+- **Capitales de cada época** marcadas con una estrella roja (unos 420 periodos, incluidas las capitales actuales de casi todos los países: Toledo visigoda,
   Córdoba califal, Constantinopla bizantina y otomana, Cuzco inca…). Al pasar el ratón se indica
   de qué estado eran capital.
 - Nombres sobre el globo, que aparecen o desaparecen según el zoom sin solaparse.
