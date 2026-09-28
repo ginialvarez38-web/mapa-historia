@@ -5,6 +5,7 @@ import { PhysicalMap, buildReliefCanvas } from './physicalMap.js';
 import { PoliticalLayer } from './politicalMap.js';
 import { Labels } from './labels.js';
 import { DetailView } from './detail.js';
+import { fetchElevation, shadeElevation } from './dem.js';
 import {
   LAYERS,
   fetchLayer,
@@ -43,8 +44,7 @@ globe.onReliefChange = () => labels.relocate();
 
 // Grupos de nombres de accidentes geográficos (se muestran u ocultan juntos).
 const FEATURE_GROUPS = ['marine', 'regions', 'rivers', 'lakes', 'peaks'];
-// Grosor de las líneas en el parche de detalle, en píxeles del parche.
-const DETAIL_LINE_SCALE = 1.6;
+const WORLD = { west: -180, east: 180, south: -90, north: 90 };
 
 let elevationImage = null;
 let satellitePromise = null;
@@ -100,12 +100,22 @@ async function initPhysicalMap() {
         console.warn(err);
         return null;
       });
-    const [land, elevation, lakesJson, riversJson] = await Promise.all([
+    const [land, dem, lakesJson, riversJson] = await Promise.all([
       loadLand(),
-      optional(loadImage(DATA.elevation)),
+      // Elevación real con batimetría (AWS Terrain Tiles); si falla, se usa
+      // una imagen de relieve más sencilla.
+      optional(fetchElevation(WORLD, 2048, 1024, { maxTiles: 64, maxZoom: 3 })),
       optional(fetchLayer(LAYERS.lakes)),
       optional(fetchLayer(LAYERS.rivers)),
     ]);
+    let shaded = null;
+    let elevation = null;
+    if (dem) {
+      shaded = shadeElevation(dem, 2048, 1024, WORLD);
+      elevation = shaded.height;
+    } else {
+      elevation = await optional(loadImage(DATA.elevation));
+    }
     elevationImage = elevation;
     if (elevation) globe.setElevation(elevation);
     const lakes = lakesJson ? lakeFeatures(lakesJson) : { polygons: [], labels: [] };
@@ -114,23 +124,24 @@ async function initPhysicalMap() {
     loaderText.textContent = 'Dibujando el mapa físico…';
     await nextPaint();
     const width = textureWidth();
-    const relief = elevation ? buildReliefCanvas(elevation, Math.min(width, 4096)) : null;
+    const relief = shaded?.land ?? (elevation ? buildReliefCanvas(elevation, Math.min(width, 4096)) : null);
     const physical = new PhysicalMap({
       land,
       lakes: lakes.polygons,
       rivers: rivers.rivers,
       relief,
+      sea: shaded?.sea ?? null,
       elevation,
       width,
     });
     globe.setPhysicalMap(physical.texture(), physical.waterMask());
 
     detail.worldWidth = width;
-    Object.assign(detail.painters, {
-      physical: (ctx, scale) => physical.draw(ctx, scale, DETAIL_LINE_SCALE),
-      water: (ctx) => physical.drawWater(ctx),
-      elevation: (ctx) => physical.drawElevation(ctx),
-    });
+    detail.physicalMap = physical;
+    if (dem) {
+      detail.elevationSource = async (view, w, h) => shadeElevation(await fetchElevation(view, w, h), w, h, view);
+    }
+    loadDetailCoast(physical);
     labels.setGroup('lakes', lakes.labels, { priority: 1 });
     labels.setGroup('rivers', rivers.labels, { priority: 1 });
 
@@ -143,6 +154,17 @@ async function initPhysicalMap() {
     console.error(err);
     window.reportFatal(err.stack || err.message);
     return false;
+  }
+}
+
+/** Costas 1:10 millones para el zoom cercano: se cargan sin bloquear. */
+async function loadDetailCoast(physical) {
+  try {
+    const topology = await fetchJSON(DATA.landDetail);
+    physical.setDetailCoast(feature(topology, topology.objects.land));
+    detail.invalidate();
+  } catch (err) {
+    console.warn(err);
   }
 }
 
@@ -201,7 +223,7 @@ async function showYear(year) {
       })),
       { priority: 2 },
     );
-    detail.painters.political = (ctx, scale) => layer.drawTo(ctx, scale, DETAIL_LINE_SCALE);
+    detail.politicalLayer = layer;
     detail.invalidate();
     politicalLayer = layer;
     select(null);

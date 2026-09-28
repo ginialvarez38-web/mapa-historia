@@ -81,7 +81,7 @@ export class PoliticalLayer {
     ctx.lineJoin = 'round';
     ctx.strokeStyle = BORDER;
     ctx.lineWidth = (1.1 * lineScale) / scale;
-    for (const { path } of this.polities) ctx.stroke(path);
+    for (const { outline } of this.polities) ctx.stroke(outline);
   }
 
   /** Entidad bajo unas coordenadas, o null (prefiere la más pequeña). */

@@ -176,17 +176,21 @@ export class PhysicalMap {
    * @param lakes   Polígonos de lagos (arrays de anillos).
    * @param rivers  [{ lines, weight }]: ríos con su grosor base en píxeles.
    * @param relief  Lienzo de relieve coloreado (o null).
+   * @param sea     Lienzo del océano con batimetría (o null: se estima por
+   *                la distancia a la costa).
    * @param elevation Imagen de elevación en grises (o null).
    * @param width   Ancho en píxeles del «mundo» (el alto es la mitad).
    */
-  constructor({ land, lakes = [], rivers = [], relief = null, elevation = null, width }) {
+  constructor({ land, lakes = [], rivers = [], relief = null, sea = null, elevation = null, width }) {
     this.width = width;
     this.height = width / 2;
     this.relief = relief;
     this.elevation = elevation;
     const polygons = collectPolygons(land);
-    this.ocean = buildOceanCanvas(polygons);
-    this.coast = polygonsToPath(polygons, this.width, this.height).path;
+    this.ocean = sea ?? buildOceanCanvas(polygons);
+    ({ path: this.coast, outline: this.coastline } = polygonsToPath(polygons, this.width, this.height));
+    this.detailCoast = null;
+    this.detailCoastline = null;
     this.lakes = polygonsToPath(lakes, this.width, this.height).path;
 
     // Un trazo por grosor: muchos menos cambios de estado al dibujar.
@@ -200,26 +204,50 @@ export class PhysicalMap {
       .map(([weight, lines]) => ({ weight, path: linesToPath(lines, this.width, this.height) }));
   }
 
+  /** Costas a mayor escala (1:10 millones) para el parche de detalle. */
+  setDetailCoast(land) {
+    ({ path: this.detailCoast, outline: this.detailCoastline } = polygonsToPath(
+      collectPolygons(land),
+      this.width,
+      this.height,
+    ));
+  }
+
+  #coastFor(detail) {
+    return (detail && this.detailCoast) || this.coast;
+  }
+
   /**
    * Dibuja en coordenadas de mundo. scale: píxeles de salida por píxel de
    * mundo; lineScale: multiplica los grosores base (en píxeles de salida).
    */
-  draw(ctx, scale = 1, lineScale = this.width / 4096) {
-    const px = (w) => (w * lineScale) / scale;
+  draw(ctx, scale = 1, lineScale = this.width / 4096, { detail = false } = {}) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(this.ocean, 0, 0, this.width, this.height);
+    this.drawLand(ctx, (c) => {
+      if (this.relief) {
+        c.drawImage(this.relief, 0, 0, this.width, this.height);
+      } else {
+        c.fillStyle = LAND_FLAT;
+        c.fillRect(0, 0, this.width, this.height);
+      }
+    }, { detail });
+    this.drawVectors(ctx, scale, lineScale, { detail });
+  }
 
+  /** Recorta a tierra firme y llama a paint(ctx) dentro del recorte. */
+  drawLand(ctx, paint, { detail = false } = {}) {
     ctx.save();
-    ctx.clip(this.coast, 'evenodd');
-    if (this.relief) {
-      ctx.drawImage(this.relief, 0, 0, this.width, this.height);
-    } else {
-      ctx.fillStyle = LAND_FLAT;
-      ctx.fillRect(0, 0, this.width, this.height);
-    }
+    ctx.clip(this.#coastFor(detail), 'evenodd');
+    paint(ctx);
     ctx.restore();
+  }
 
+  /** Lagos, ríos y costas. */
+  drawVectors(ctx, scale = 1, lineScale = this.width / 4096, { detail = false } = {}) {
+    const px = (w) => (w * lineScale) / scale;
+    const coastline = (detail && this.detailCoastline) || this.coastline;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.fillStyle = LAKE;
@@ -236,15 +264,15 @@ export class PhysicalMap {
 
     ctx.strokeStyle = COAST;
     ctx.lineWidth = px(0.9);
-    ctx.stroke(this.coast);
+    ctx.stroke(coastline);
   }
 
   /** Máscara del agua (blanco = mar o lago) para los brillos especulares. */
-  drawWater(ctx) {
+  drawWater(ctx, { detail = false } = {}) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, this.width, this.height);
     ctx.fillStyle = '#000';
-    ctx.fill(this.coast, 'evenodd');
+    ctx.fill(this.#coastFor(detail), 'evenodd');
     ctx.fillStyle = '#fff';
     ctx.fill(this.lakes, 'evenodd');
   }

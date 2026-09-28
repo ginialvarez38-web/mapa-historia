@@ -5,6 +5,8 @@ export const DATA = {
   // Masas de tierra de Natural Earth en TopoJSON (sin fronteras políticas).
   land: `${CDN}/world-atlas@2/land-50m.json`,
   landFallback: `${CDN}/world-atlas@2/land-110m.json`,
+  // Costas a escala 1:10 millones para el zoom cercano.
+  landDetail: `${CDN}/world-atlas@2/land-10m.json`,
   // Imágenes equirectangulares incluidas en el paquete three-globe.
   elevation: `${CDN}/three-globe@2/example/img/earth-topology.png`,
   blueMarble: `${CDN}/three-globe@2/example/img/earth-blue-marble.jpg`,

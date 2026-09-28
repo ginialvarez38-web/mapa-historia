@@ -59,6 +59,10 @@ export function unwrapRing(ring) {
  */
 export function polygonsToPath(polygons, width, height) {
   const path = new Path2D();
+  // Contorno para trazar: igual que path, pero sin los tramos que siguen el
+  // antimeridiano (son cortes de los datos, no costas ni fronteras reales).
+  const outline = new Path2D();
+  const onSeam = (a, b) => Math.abs(a[0]) === 180 && Math.abs(b[0]) === 180;
   const px = (lon) => ((lon + 180) / 360) * width;
   const py = (lat) => ((90 - lat) / 180) * height;
   let minX = Infinity;
@@ -81,8 +85,17 @@ export function polygonsToPath(polygons, width, height) {
       for (const shift of [-360, 0, 360]) {
         if (minLon + shift >= 180 || maxLon + shift <= -180) continue;
         points.forEach(([lon, lat], i) => {
-          if (i === 0) path.moveTo(px(lon + shift), py(lat));
-          else path.lineTo(px(lon + shift), py(lat));
+          const x = px(lon + shift);
+          const y = py(lat);
+          if (i === 0) {
+            path.moveTo(x, y);
+            outline.moveTo(x, y);
+            return;
+          }
+          path.lineTo(x, y);
+          const seam = i < ring.length && onSeam(ring[i - 1], ring[i]);
+          if (seam) outline.moveTo(x, y);
+          else outline.lineTo(x, y);
         });
         path.closePath();
         minX = Math.min(minX, Math.max(px(minLon + shift), 0));
@@ -90,7 +103,7 @@ export function polygonsToPath(polygons, width, height) {
       }
     }
   }
-  return { path, bbox: [minX, minY, maxX, maxY] };
+  return { path, outline, bbox: [minX, minY, maxX, maxY] };
 }
 
 /** Longitud normalizada a [-180, 180). */

@@ -10,8 +10,9 @@ El objetivo es mostrar la distribución política del mundo en distintos siglos.
 - Globo 3D con [Three.js](https://threejs.org/): girar, acercar y doble clic para volar a un punto.
 - **Zoom** suave hacia el cursor (rueda, pellizco, botones + − o teclas + −), hasta unos 50 km
   de altura. Al acercarse, la zona visible se redibuja en alta resolución (parche de detalle).
-- **Mapa físico** generado en el navegador: costas de Natural Earth, relieve sombreado y
-  tintas hipsométricas a partir de un modelo de elevación.
+- **Mapa físico** generado en el navegador a partir de elevación real: tintas hipsométricas,
+  sombreado de laderas y batimetría (profundidad real de los océanos). Al acercarse, la zona
+  visible se redibuja con teselas de elevación de más resolución y costas 1:10 millones.
 - **Vista satélite** (NASA Blue Marble) con relieve y brillo del agua.
 - **Relieve 3D** exagerable, océano con degradado de profundidad, ríos y lagos.
 - **Accidentes geográficos** rotulados: océanos, mares, golfos, estrechos, cordilleras,
@@ -51,6 +52,7 @@ se descargan de jsDelivr.
 | `js/features.js`     | Accidentes geográficos de Natural Earth                     |
 | `js/detail.js`       | Parche de detalle en alta resolución al acercarse           |
 | `js/history.js`      | Catálogo de años/siglos disponibles y descarga de los mapas |
+| `js/dem.js`          | Elevación de alta resolución (teselas terrarium) y sombreado |
 | `js/geo.js`          | Proyección de GeoJSON a lienzo (incluido el antimeridiano)  |
 | `js/config.js`       | URLs de datos y vista inicial                               |
 
@@ -68,4 +70,7 @@ Para añadir o quitar años, edita `SNAPSHOT_YEARS` en `js/history.js`.
 - Costas: [Natural Earth](https://www.naturalearthdata.com/) vía `world-atlas` (dominio público).
 - Ríos, lagos, regiones físicas, mares y picos: [Natural Earth](https://github.com/nvkelso/natural-earth-vector)
   (dominio público), escala 1:50 millones; nombres en español cuando están disponibles.
-- Relieve e imagen satelital: [NASA Visible Earth](https://visibleearth.nasa.gov/) vía `three-globe`.
+- Elevación y batimetría: [Terrain Tiles de AWS](https://registry.opendata.aws/terrain-tiles/)
+  (Mapzen; fuentes SRTM, GMTED, ETOPO1 y otras). Si no están disponibles, se usa la imagen de
+  relieve de `three-globe`.
+- Imagen satelital: [NASA Visible Earth](https://visibleearth.nasa.gov/) vía `three-globe`.

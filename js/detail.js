@@ -1,16 +1,20 @@
 // Parche de detalle: al acercarse, la zona que se está mirando se vuelve a
 // dibujar en un lienzo propio a mucha más resolución que la textura global
-// (costas, ríos, lagos y fronteras nítidos) y se coloca sobre el globo como
-// un trozo de esfera con el mismo relieve.
+// y se coloca sobre el globo como un trozo de esfera con su propio relieve.
+// Se pinta primero con los datos globales (inmediato) y luego se afina con
+// teselas de elevación de alta resolución cuando llegan.
 
 import * as THREE from 'three';
 import { EARTH_RADIUS, vector3ToLatLon } from './globe.js';
 import { drawWindow } from './geo.js';
 
 const DEG = Math.PI / 180;
-const START_ALTITUDE = 0.6; // por debajo de esta altura se activa el detalle
-const CANVAS_WIDTH = matchMedia('(pointer: coarse)').matches ? 1024 : 2048;
-const MESH_SEGMENTS = 192;
+const COARSE = matchMedia('(pointer: coarse)').matches;
+const START_ALTITUDE = 1.2; // por debajo de esta altura se activa el detalle
+const CANVAS_WIDTH = COARSE ? 1536 : 3072;
+const DEM_WIDTH = COARSE ? 768 : 1536; // rejilla de elevación (se amplía suavemente)
+const MESH_SEGMENTS = COARSE ? 160 : 256;
+const LINE_SCALE = COARSE ? 1.3 : 1.7; // grosor de líneas en píxeles del parche
 const SETTLE_MS = 160; // espera a que la cámara se detenga antes de redibujar
 // Escalas ligeramente mayores que la Tierra y que la capa política global.
 const PHYSICAL_SCALE = 1.0004;
@@ -18,20 +22,23 @@ const POLITICAL_SCALE = 1.0016;
 
 function makeCanvas(width, height) {
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = Math.max(1, Math.round(width));
+  canvas.height = Math.max(1, Math.round(height));
   return canvas;
 }
 
 export class DetailView {
-  /**
-   * painters: funciones que dibujan en coordenadas de mundo (ancho worldWidth):
-   *   physical(ctx, scale), water(ctx), elevation(ctx), political(ctx, scale) | null
-   */
-  painters = { physical: null, water: null, elevation: null, political: null };
+  /** PhysicalMap con el que se dibuja el mapa físico. */
+  physicalMap = null;
+  /** PoliticalLayer actual (o null). */
+  politicalLayer = null;
+  /** (view, width, height) => Promise<{ land, sea, height }> con elevación de alta resolución. */
+  elevationSource = null;
   worldWidth = 8192;
 
   #view = null;
+  #token = 0;
+  #demCache = null; // { key, dem } de la última ventana afinada
   #lastCamera = new THREE.Vector3();
   #lastMove = 0;
 
@@ -40,7 +47,7 @@ export class DetailView {
     const geometry = new THREE.BufferGeometry();
     this.physical = new THREE.Mesh(
       geometry,
-      new THREE.MeshPhongMaterial({ specular: 0x506070, shininess: 28, bumpScale: 2 }),
+      new THREE.MeshPhongMaterial({ specular: 0x506070, shininess: 28, bumpScale: 1.5 }),
     );
     this.physical.scale.setScalar(PHYSICAL_SCALE);
     // La malla global es más gruesa y en los valles podría asomar por encima
@@ -58,7 +65,7 @@ export class DetailView {
     globe.scene.add(this.physical, this.political);
   }
 
-  /** Obliga a redibujar (p. ej. al cambiar de siglo). */
+  /** Obliga a redibujar (p. ej. al cambiar de siglo o cargar datos nuevos). */
   invalidate() {
     this.#view = null;
   }
@@ -73,8 +80,7 @@ export class DetailView {
     }
 
     const altitude = this.globe.altitude;
-    const ready = this.painters.physical && altitude < START_ALTITUDE;
-    if (!ready) {
+    if (!this.physicalMap || altitude > START_ALTITUDE) {
       this.#setVisible(false);
       return;
     }
@@ -106,7 +112,7 @@ export class DetailView {
     const diagonal = Math.hypot(Math.tan(vfov / 2), Math.tan(hfov / 2));
     const horizon = Math.acos(EARTH_RADIUS / (EARTH_RADIUS + altitude));
     const visible = Math.min(altitude * diagonal, horizon) / DEG;
-    return THREE.MathUtils.clamp(visible * 1.5, 0.4, 60);
+    return THREE.MathUtils.clamp(visible * 1.4, 0.3, 70);
   }
 
   #windowAround(lat, lon, latHalf) {
@@ -140,30 +146,36 @@ export class DetailView {
   }
 
   #paint(view) {
+    const token = ++this.#token;
+    this.#view = view;
     const lonSpan = view.east - view.west;
     const latSpan = view.north - view.south;
     const width = CANVAS_WIDTH;
     const height = THREE.MathUtils.clamp(Math.round((width * latSpan) / lonSpan), 64, width);
+    const size = { width, height };
 
-    const physical = makeCanvas(width, height);
-    const pctx = physical.getContext('2d');
-    drawWindow(pctx, view, this.worldWidth, (scale) => this.painters.physical(pctx, scale));
-
-    const water = makeCanvas(width / 2, Math.max(height / 2, 32));
-    const wctx = water.getContext('2d');
-    drawWindow(wctx, view, this.worldWidth, () => this.painters.water(wctx));
-
-    const elevation = makeCanvas(width / 2, Math.max(height / 2, 32));
-    const ectx = elevation.getContext('2d');
-    drawWindow(ectx, view, this.worldWidth, () => this.painters.elevation(ectx));
-
-    let political = null;
-    if (this.painters.political) {
-      political = makeCanvas(width, height);
-      const lctx = political.getContext('2d');
-      drawWindow(lctx, view, this.worldWidth, (scale) => this.painters.political(lctx, scale));
+    this.#setGeometry(view);
+    const key = `${view.west},${view.east},${view.south},${view.north}`;
+    if (this.#demCache?.key === key) {
+      this.#compose(view, size, this.#demCache.dem);
+      return;
     }
+    this.#compose(view, size, null);
 
+    if (this.elevationSource) {
+      const demHeight = Math.max(32, Math.round((DEM_WIDTH * height) / width));
+      this.elevationSource(view, DEM_WIDTH, demHeight)
+        .then((dem) => {
+          this.#demCache = { key, dem };
+          if (token === this.#token) this.#compose(view, size, dem);
+        })
+        .catch((err) => console.warn(err));
+    }
+  }
+
+  #setGeometry(view) {
+    const lonSpan = view.east - view.west;
+    const latSpan = view.north - view.south;
     const geometry = new THREE.SphereGeometry(
       EARTH_RADIUS,
       MESH_SEGMENTS,
@@ -176,6 +188,54 @@ export class DetailView {
     this.physical.geometry.dispose();
     this.physical.geometry = geometry;
     this.political.geometry = geometry;
+  }
+
+  /** Dibuja las texturas del parche; dem (opcional) aporta relieve y batimetría finos. */
+  #compose(view, { width, height }, dem) {
+    const map = this.physicalMap;
+    const W = this.worldWidth;
+    const detail = { detail: true };
+
+    const physical = makeCanvas(width, height);
+    const pctx = physical.getContext('2d');
+    pctx.imageSmoothingEnabled = true;
+    pctx.imageSmoothingQuality = 'high';
+    if (dem) {
+      pctx.drawImage(dem.sea, 0, 0, width, height);
+      drawWindow(pctx, view, W, (scale) => {
+        map.drawLand(
+          pctx,
+          (c) => {
+            c.save();
+            c.setTransform(1, 0, 0, 1, 0, 0); // el recorte se conserva
+            c.drawImage(dem.land, 0, 0, width, height);
+            c.restore();
+          },
+          detail,
+        );
+        map.drawVectors(pctx, scale, LINE_SCALE, detail);
+      });
+    } else {
+      drawWindow(pctx, view, W, (scale) => map.draw(pctx, scale, LINE_SCALE, detail));
+    }
+
+    const water = makeCanvas(width / 2, height / 2);
+    const wctx = water.getContext('2d');
+    drawWindow(wctx, view, W, () => map.drawWater(wctx, detail));
+
+    let elevation = dem?.height;
+    if (!elevation) {
+      elevation = makeCanvas(width / 2, height / 2);
+      const ectx = elevation.getContext('2d');
+      drawWindow(ectx, view, W, () => map.drawElevation(ectx));
+    }
+
+    let political = null;
+    if (this.politicalLayer) {
+      political = makeCanvas(width, height);
+      const lctx = political.getContext('2d');
+      drawWindow(lctx, view, W, (scale) => this.politicalLayer.drawTo(lctx, scale, LINE_SCALE));
+    }
 
     const anisotropy = this.globe.renderer.capabilities.getMaxAnisotropy();
     const texture = (canvas, srgb) => {
@@ -205,7 +265,5 @@ export class DetailView {
       displacementScale: this.globe.reliefScale,
     });
     lm.needsUpdate = true;
-
-    this.#view = view;
   }
 }
