@@ -34,11 +34,20 @@ export class DetailView {
   politicalLayer = null;
   /** (view, width, height) => Promise<{ land, sea, height }> con elevación de alta resolución. */
   elevationSource = null;
+  /** Imagen satelital global (equirectangular) para pintar al instante, o null. */
+  satelliteBase = null;
+  /** (view, width, height) => Promise<canvas> con fotos satelitales de alta resolución. */
+  imagerySource = null;
   worldWidth = 8192;
 
   #view = null;
   #token = 0;
   #demCache = null; // { key, dem } de la última ventana afinada
+  #viewKey = null;
+  #size = null;
+  #satelliteKey = null; // ventana para la que está pintada la foto satelital
+  #satelliteToken = 0;
+  #shared = { elevation: null, water: null }; // texturas compartidas por los parches
   #lastCamera = new THREE.Vector3();
   #lastMove = 0;
 
@@ -60,9 +69,22 @@ export class DetailView {
       new THREE.MeshPhongMaterial({ transparent: true, depthWrite: false, specular: 0x111111, shininess: 6 }),
     );
     this.political.scale.setScalar(POLITICAL_SCALE);
+    this.satellite = new THREE.Mesh(
+      geometry,
+      new THREE.MeshPhongMaterial({ specular: 0x4a5a6a, shininess: 24, bumpScale: 1.2 }),
+    );
+    this.satellite.scale.setScalar(PHYSICAL_SCALE);
+    this.satellite.renderOrder = 1;
+    this.satellite.onBeforeRender = (renderer) => renderer.clearDepth();
     this.physical.visible = false;
     this.political.visible = false;
-    globe.scene.add(this.physical, this.political);
+    this.satellite.visible = false;
+    globe.scene.add(this.physical, this.satellite, this.political);
+  }
+
+  /** Vuelve a pintar la foto satelital (p. ej. al mejorar la imagen global). */
+  refreshSatellite() {
+    this.#satelliteKey = null;
   }
 
   /** Obliga a redibujar (p. ej. al cambiar de siglo o cargar datos nuevos). */
@@ -90,15 +112,21 @@ export class DetailView {
     if (!this.#covers(lat, lon, halfSpan) && now - this.#lastMove > SETTLE_MS) {
       this.#paint(this.#windowAround(lat, lon, halfSpan));
     }
+    if (this.#view && !this.globe.isPhysicalStyle && this.#satelliteKey !== this.#viewKey) {
+      this.#paintSatellite();
+    }
     if (this.#view) {
-      this.physical.material.displacementScale = this.globe.reliefScale;
-      this.political.material.displacementScale = this.globe.reliefScale;
+      for (const mesh of [this.physical, this.satellite, this.political]) {
+        mesh.material.displacementScale = this.globe.reliefScale;
+      }
     }
     this.#setVisible(Boolean(this.#view));
   }
 
   #setVisible(active) {
     this.physical.visible = active && this.globe.isPhysicalStyle;
+    this.satellite.visible =
+      active && !this.globe.isPhysicalStyle && Boolean(this.satellite.material.map) && this.#satelliteKey === this.#viewKey;
     const political = active && this.globe.politicalVisible && Boolean(this.political.material.map);
     this.political.visible = political;
     this.globe.politicalDetailActive = political;
@@ -156,6 +184,8 @@ export class DetailView {
 
     this.#setGeometry(view);
     const key = `${view.west},${view.east},${view.south},${view.north}`;
+    this.#viewKey = key;
+    this.#size = size;
     if (this.#demCache?.key === key) {
       this.#compose(view, size, this.#demCache.dem);
       return;
@@ -188,6 +218,7 @@ export class DetailView {
     this.physical.geometry.dispose();
     this.physical.geometry = geometry;
     this.political.geometry = geometry;
+    this.satellite.geometry = geometry;
   }
 
   /** Dibuja las texturas del parche; dem (opcional) aporta relieve y batimetría finos. */
@@ -246,16 +277,29 @@ export class DetailView {
     };
     const elevationTexture = texture(elevation, false);
 
+    const waterTexture = texture(water, false);
+    this.#shared.elevation?.dispose();
+    this.#shared.water?.dispose();
+    this.#shared = { elevation: elevationTexture, water: waterTexture };
+
     const pm = this.physical.material;
-    for (const old of [pm.map, pm.specularMap, pm.displacementMap]) old?.dispose();
+    pm.map?.dispose();
     Object.assign(pm, {
       map: texture(physical, true),
-      specularMap: texture(water, false),
+      specularMap: waterTexture,
       displacementMap: elevationTexture,
       bumpMap: elevationTexture,
       displacementScale: this.globe.reliefScale,
     });
     pm.needsUpdate = true;
+
+    // La foto satelital comparte relieve y máscara de agua con el parche físico.
+    Object.assign(this.satellite.material, {
+      specularMap: waterTexture,
+      displacementMap: elevationTexture,
+      bumpMap: elevationTexture,
+    });
+    this.satellite.material.needsUpdate = true;
 
     const lm = this.political.material;
     lm.map?.dispose();
@@ -265,5 +309,43 @@ export class DetailView {
       displacementScale: this.globe.reliefScale,
     });
     lm.needsUpdate = true;
+  }
+
+  /** Foto satelital del parche: al instante con la imagen global y luego en alta resolución. */
+  #paintSatellite() {
+    const view = this.#view;
+    const key = this.#viewKey;
+    const { width, height } = this.#size;
+    const token = ++this.#satelliteToken;
+    this.#satelliteKey = key;
+
+    const base = makeCanvas(width, height);
+    if (this.satelliteBase) {
+      const ctx = base.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      const image = this.satelliteBase;
+      drawWindow(ctx, view, this.worldWidth, () => ctx.drawImage(image, 0, 0, this.worldWidth, this.worldWidth / 2));
+    }
+    this.#setSatelliteTexture(base);
+
+    this.imagerySource?.(view, width, height)
+      .then((photo) => {
+        if (token !== this.#satelliteToken) return;
+        // Debajo, la imagen global (cubre los polos, fuera de Web Mercator).
+        base.getContext('2d').drawImage(photo, 0, 0);
+        this.#setSatelliteTexture(base);
+      })
+      .catch((err) => console.warn(err));
+  }
+
+  #setSatelliteTexture(canvas) {
+    const material = this.satellite.material;
+    material.map?.dispose();
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = this.globe.renderer.capabilities.getMaxAnisotropy();
+    material.map = texture;
+    material.needsUpdate = true;
   }
 }

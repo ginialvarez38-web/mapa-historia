@@ -13,7 +13,8 @@ El objetivo es mostrar la distribución política del mundo en distintos siglos.
 - **Mapa físico** generado en el navegador a partir de elevación real: tintas hipsométricas,
   sombreado de laderas y batimetría (profundidad real de los océanos). Al acercarse, la zona
   visible se redibuja con teselas de elevación de más resolución y costas 1:10 millones.
-- **Vista satélite** (NASA Blue Marble) con relieve y brillo del agua.
+- **Vista satélite** en alta resolución (teselas de Esri World Imagery, con Sentinel‑2
+  cloudless de EOX como respaldo), más detallada cuanto más te acercas, con relieve y brillo del agua.
 - **Relieve 3D** exagerable, océano con degradado de profundidad, ríos y lagos.
 - **Accidentes geográficos** rotulados: océanos, mares, golfos, estrechos, cordilleras,
   mesetas, desiertos, penínsulas, ríos, lagos y picos con su altitud.
@@ -53,6 +54,7 @@ se descargan de jsDelivr.
 | `js/detail.js`       | Parche de detalle en alta resolución al acercarse           |
 | `js/history.js`      | Catálogo de años/siglos disponibles y descarga de los mapas |
 | `js/dem.js`          | Elevación de alta resolución (teselas terrarium) y sombreado |
+| `js/imagery.js`      | Fotos satelitales por teselas, reproyectadas al globo       |
 | `js/geo.js`          | Proyección de GeoJSON a lienzo (incluido el antimeridiano)  |
 | `js/config.js`       | URLs de datos y vista inicial                               |
 
@@ -73,4 +75,7 @@ Para añadir o quitar años, edita `SNAPSHOT_YEARS` en `js/history.js`.
 - Elevación y batimetría: [Terrain Tiles de AWS](https://registry.opendata.aws/terrain-tiles/)
   (Mapzen; fuentes SRTM, GMTED, ETOPO1 y otras). Si no están disponibles, se usa la imagen de
   relieve de `three-globe`.
-- Imagen satelital: [NASA Visible Earth](https://visibleearth.nasa.gov/) vía `three-globe`.
+- Fotos satelitales: [Esri World Imagery](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9)
+  (Esri, Maxar, Earthstar Geographics; sujeto a sus condiciones de uso) o, si no está disponible,
+  [Sentinel‑2 cloudless](https://s2maps.eu) de EOX (datos Copernicus Sentinel; licencia CC BY-NC-SA).
+  Imagen global de respaldo y polos: [NASA Visible Earth](https://visibleearth.nasa.gov/) vía `three-globe`.

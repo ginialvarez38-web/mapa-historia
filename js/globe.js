@@ -355,6 +355,18 @@ export class Globe {
     this.highlightGroup.add(outline);
   }
 
+  /** Sustituye la imagen de color de la vista satélite (p. ej. por una de más resolución). */
+  setSatelliteColor(image) {
+    const material = this.materials.satellite;
+    if (!material) return;
+    material.map?.dispose();
+    const texture = new THREE.CanvasTexture(image);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    material.map = texture;
+    material.needsUpdate = true;
+  }
+
   setStyle(name) {
     const material = this.materials[name];
     if (material) this.earth.material = material;

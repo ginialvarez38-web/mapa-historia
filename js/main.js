@@ -6,6 +6,7 @@ import { PoliticalLayer } from './politicalMap.js';
 import { Labels } from './labels.js';
 import { DetailView } from './detail.js';
 import { fetchElevation, shadeElevation } from './dem.js';
+import { currentProvider, fetchImagery } from './imagery.js';
 import {
   LAYERS,
   fetchLayer,
@@ -378,12 +379,50 @@ const timeline = (() => {
 
 /* ---------- Controles ---------- */
 
+const COARSE = matchMedia('(pointer: coarse)').matches;
+
 function ensureSatellite() {
   satellitePromise ??= Promise.all([
     loadImage(DATA.blueMarble),
     loadImage(DATA.water).catch(() => null),
-  ]).then(([color, specular]) => globe.setSatelliteMaps({ color, bump: elevationImage, specular }));
+  ]).then(([color, specular]) => {
+    globe.setSatelliteMaps({ color, bump: elevationImage, specular });
+    detail.satelliteBase = color;
+    detail.imagerySource = (view, width, height) =>
+      fetchImagery(view, width, height, { maxTiles: COARSE ? 48 : 96 }).then((photo) => {
+        updateSatelliteCredit();
+        return photo;
+      });
+    upgradeGlobalSatellite(color);
+  });
   return satellitePromise;
+}
+
+/** Sustituye la imagen global de la NASA por fotos satelitales de más resolución. */
+async function upgradeGlobalSatellite(blueMarble) {
+  const width = COARSE ? 2048 : 4096;
+  try {
+    const photo = await fetchImagery(WORLD, width, width / 2, {
+      maxTiles: COARSE ? 64 : 256,
+      maxZoom: COARSE ? 3 : 4,
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = width / 2;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(blueMarble, 0, 0, width, width / 2); // cubre los polos
+    ctx.drawImage(photo, 0, 0);
+    globe.setSatelliteColor(canvas);
+    detail.satelliteBase = canvas;
+    detail.refreshSatellite();
+    updateSatelliteCredit();
+  } catch (err) {
+    console.warn(err);
+  }
+}
+
+function updateSatelliteCredit() {
+  $('satellite-credit').textContent = `${currentProvider().attribution} · NASA`;
 }
 
 async function selectStyle(button) {
