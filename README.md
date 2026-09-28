@@ -25,7 +25,7 @@ El objetivo es mostrar la distribución política del mundo en distintos siglos.
 - **Ciudades históricas** (382): solo aparecen las que existían en el año elegido y con el
   nombre de entonces (Bizancio → Constantinopla → Estambul, Tenochtitlan → Ciudad de México…).
   El tamaño del punto indica su importancia; las menores aparecen al acercarse.
-- **Capitales de cada época** marcadas con una estrella roja (unos 330 periodos: Toledo visigoda,
+- **Capitales de cada época** marcadas con una estrella roja (231 periodos: Toledo visigoda,
   Córdoba califal, Constantinopla bizantina y otomana, Cuzco inca…). Al pasar el ratón se indica
   de qué estado eran capital.
 - Nombres sobre el globo, que aparecen o desaparecen según el zoom sin solaparse.
