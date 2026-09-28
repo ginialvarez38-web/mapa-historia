@@ -88,12 +88,12 @@ async function initPhysicalMap() {
     globe.setPhysicalMap(buildPhysicalMap({ land, relief, width }));
 
     loader.classList.add('hidden');
+    window.mapReady = true;
     if (!elevation) showToast('No se pudo cargar el relieve; se muestra solo la silueta de los continentes.');
     return true;
   } catch (err) {
     console.error(err);
-    loader.classList.add('error');
-    loaderText.textContent = 'No se pudieron cargar los datos del mapa. Comprueba tu conexión y recarga la página.';
+    window.reportFatal(err.stack || err.message);
     return false;
   }
 }
@@ -129,7 +129,7 @@ async function showYear(year) {
   } catch (err) {
     if (id !== requestId) return;
     console.error(err);
-    showToast(`No se pudo cargar el mapa político de ${yearLabel(year)}.`);
+    showToast(`No se pudo cargar el mapa político de ${yearLabel(year)}. (${err.message})`);
   } finally {
     if (id === requestId) timeline.setLoading(false);
   }

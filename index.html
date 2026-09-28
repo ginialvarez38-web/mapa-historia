@@ -67,8 +67,33 @@
     <div id="loader" class="loader" role="status">
       <div class="spinner" aria-hidden="true"></div>
       <p id="loader-text">Cargando…</p>
+      <code id="loader-detail" class="detail" hidden></code>
     </div>
 
-    <script type="module" src="js/main.js"></script>
+    <script>
+      // Muestra cualquier fallo de arranque en pantalla (incluidos los de
+      // descarga de módulos), para poder diagnosticarlo sin abrir la consola.
+      window.reportFatal = function (message) {
+        var loader = document.getElementById('loader');
+        var detail = document.getElementById('loader-detail');
+        loader.classList.remove('hidden');
+        loader.classList.add('error');
+        document.getElementById('loader-text').textContent =
+          'No se pudo iniciar el mapa. Recarga la página; si el error continúa, copia este mensaje:';
+        detail.textContent = String(message || 'Error desconocido');
+        detail.hidden = false;
+      };
+      window.addEventListener('error', function (e) {
+        if (!window.mapReady) window.reportFatal(e.message + (e.filename ? ' (' + e.filename + ':' + e.lineno + ')' : ''));
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        if (!window.mapReady) window.reportFatal(e.reason && (e.reason.stack || e.reason.message) || e.reason);
+      });
+    </script>
+    <script
+      type="module"
+      src="js/main.js"
+      onerror="reportFatal('No se pudo descargar js/main.js o una de sus dependencias (Three.js en cdn.jsdelivr.net).')"
+    ></script>
   </body>
 </html>
